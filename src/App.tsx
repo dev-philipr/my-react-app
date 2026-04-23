@@ -62,7 +62,7 @@ function App() {
           <img src={viteLogo} className="vite" alt="Vite logo" />
         </div>
         <div>
-          <h1>Get started with Cloudflare</h1>
+          <h1>Get started with Cloudflare HAH</h1>
           <p>
             Edit <code>src/App.tsx</code> or <code>worker/index.ts</code> and
             save to test <code>HMR</code>
