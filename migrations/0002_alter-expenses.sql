@@ -1,0 +1,9 @@
+-- Migration number: 0002 	 2026-04-23T05:09:01.401Z
+CREATE TABLE IF NOT EXISTS expenses (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  amount REAL NOT NULL,
+  description TEXT NOT NULL,
+  category TEXT,
+  date TEXT NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
