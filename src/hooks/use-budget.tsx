@@ -1,4 +1,5 @@
-import { eachDayOfInterval, format } from "date-fns";
+import { UTCDate } from "@date-fns/utc";
+import { eachDayOfInterval, format, isSameDay } from "date-fns";
 
 interface UseBudgetProps {
   config: {
@@ -25,7 +26,7 @@ export const useBudget = ({ config, transactions }: UseBudgetProps) => {
 
   const expenses = transactions.reduce(
     (acc, { debit, date }) => {
-      const formattedDate = format(date, "yyyy-MM-dd");
+      const formattedDate = format(new UTCDate(date), "yyyy-MM-dd");
 
       if (!acc[formattedDate]) {
         acc[formattedDate] = 0;
@@ -42,11 +43,9 @@ export const useBudget = ({ config, transactions }: UseBudgetProps) => {
     0,
   );
 
-  const totalBalance = config.budget - totalExpenses;
-
   const income = transactions.reduce(
     (acc, { credit, date }) => {
-      const formattedDate = format(date, "yyyy-MM-dd");
+      const formattedDate = format(new UTCDate(date), "yyyy-MM-dd");
 
       if (!acc[formattedDate]) {
         acc[formattedDate] = 0;
@@ -58,9 +57,16 @@ export const useBudget = ({ config, transactions }: UseBudgetProps) => {
     {} as Record<string, number>,
   );
 
+  const totalIncome = Object.values(income).reduce(
+    (acc, exp) => (acc += exp),
+    0,
+  );
+
+  const totalBalance = config.budget - totalExpenses + totalIncome;
+
   let accumulator = 0;
   const events = datesInRange.map((date) => {
-    const formattedDate = format(date, "yyyy-MM-dd");
+    const formattedDate = format(new UTCDate(date), "yyyy-MM-dd");
     const exp = expenses[formattedDate] || 0;
     const inc = income[formattedDate] || 0;
 
@@ -78,7 +84,9 @@ export const useBudget = ({ config, transactions }: UseBudgetProps) => {
   });
 
   const balanceToday =
-    events.find(({ date }) => date === today)?.endBalance || 0;
+    events.find(({ date }) => isSameDay(today, date))?.endBalance || 0;
+
+  const totalSpent = config.budget - totalBalance;
 
   return {
     budget: config.budget,
@@ -86,5 +94,6 @@ export const useBudget = ({ config, transactions }: UseBudgetProps) => {
     events,
     totalBalance,
     balanceToday,
+    totalSpent,
   };
 };

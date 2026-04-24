@@ -21,6 +21,7 @@
     "@chakra-ui/stat": "^2.1.1",
     "@chakra-ui/table": "^2.1.0",
     "@chakra-ui/theme-tools": "^2.2.6",
+    "@date-fns/utc": "^2.1.1",
     "@emotion/react": "^11.14.0",
     "@floating-ui/react": "^0.27.19",
     "@tiptap/pm": "^3.22.4",

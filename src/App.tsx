@@ -1,6 +1,7 @@
 import { useState, useEffect, useId, useCallback } from "react";
 import { useBudget } from "./hooks/use-budget";
 import { Provider } from "./components/ui/provider";
+import { UTCDate } from "@date-fns/utc";
 import {
   Box,
   Heading,
@@ -9,12 +10,18 @@ import {
   Text,
   Badge,
   Grid,
+  GridItem,
   Separator,
   Stack,
   Input,
   Button,
   IconButton,
   Field,
+  Portal,
+  DrawerBackdrop,
+  DrawerPositioner,
+  DrawerCloseTrigger,
+  CloseButton,
 } from "@chakra-ui/react";
 import { format, parseISO } from "date-fns";
 import {
@@ -29,6 +36,12 @@ import {
   Check,
   Settings,
 } from "lucide-react";
+import {
+  AccordionRoot,
+  AccordionItem,
+  AccordionItemTrigger,
+  AccordionItemContent,
+} from "@chakra-ui/react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -566,7 +579,7 @@ function TxRow({ tx, onEdit, onDelete }: TxRowProps) {
           fontVariantNumeric="tabular-nums"
           flexShrink={0}
         >
-          {tx.date}
+          {format(new UTCDate(tx.date), "MMM dd, yyyy")}
         </Text>
         {tx.credit > 0 && (
           <Badge
@@ -629,6 +642,7 @@ function EventCard({
   onDelete,
 }: EventCardProps) {
   const isUp = endBalance >= 0;
+  const hasTransactions = transactions.length > 0;
 
   return (
     <Box
@@ -640,139 +654,178 @@ function EventCard({
       _hover={{ borderColor: "border.emphasized", shadow: "sm" }}
       transition="all 0.2s"
     >
-      {/* Header */}
-      <Flex
-        px={5}
-        py={3.5}
-        bg="bg.muted"
-        borderBottomWidth="1px"
-        borderColor="border.subtle"
-        justify="space-between"
-        align="center"
-      >
-        <Flex align="center" gap={2.5}>
-          {isUp ? (
-            <TrendingUp size={14} color="var(--chakra-colors-green-400)" />
-          ) : (
-            <TrendingDown size={14} color="var(--chakra-colors-red-400)" />
-          )}
-          <Text
-            fontSize="sm"
-            fontWeight="bold"
-            color="fg"
-            letterSpacing="tight"
+      <AccordionRoot collapsible variant="plain">
+        <AccordionItem value="transactions">
+          {/* Header / Trigger */}
+          <AccordionItemTrigger
+            px={5}
+            py={3.5}
+            bg="bg.muted"
+            borderBottomWidth="1px"
+            borderColor="border.subtle"
+            _hover={
+              hasTransactions ? { bg: "bg.emphasized" } : { bg: "bg.muted" }
+            }
+            cursor={hasTransactions ? "pointer" : "default"}
           >
-            {format(date, "MMM dd, yyyy")}
-          </Text>
-        </Flex>
-        <Badge
-          colorPalette={isUp ? "green" : "red"}
-          variant="subtle"
-          borderRadius="full"
-          px={2.5}
-          fontSize="xs"
-        >
-          {isUp ? "+" : "−"}${Math.abs(endBalance).toFixed(2)}
-        </Badge>
-      </Flex>
+            <Flex justify="space-between" align="center" w="100%">
+              <Flex align="center" gap={2.5}>
+                {isUp ? (
+                  <TrendingUp
+                    size={14}
+                    color="var(--chakra-colors-green-400)"
+                  />
+                ) : (
+                  <TrendingDown
+                    size={14}
+                    color="var(--chakra-colors-red-400)"
+                  />
+                )}
+                <Text
+                  fontSize="sm"
+                  fontWeight="bold"
+                  color="fg"
+                  letterSpacing="tight"
+                >
+                  {format(date, "MMM dd, yyyy")}
+                </Text>
+              </Flex>
 
-      {/* 2×2 stats */}
-      <Grid templateColumns="1fr 1fr" gap={0}>
-        <Box
-          px={5}
-          py={4}
-          borderRightWidth="1px"
-          borderColor="border.subtle"
-          borderBottomWidth="1px"
-        >
-          <Text
-            fontSize="xs"
-            fontWeight="semibold"
-            letterSpacing="widest"
-            textTransform="uppercase"
-            color="fg.subtle"
-            mb={1}
-          >
-            Start
-          </Text>
-          <Text
-            fontSize="md"
-            fontWeight="semibold"
-            color="fg.muted"
-            fontVariantNumeric="tabular-nums"
-          >
-            ${startBalance.toFixed(2)}
-          </Text>
-        </Box>
-        <Box px={5} py={4} borderBottomWidth="1px" borderColor="border.subtle">
-          <Text
-            fontSize="xs"
-            fontWeight="semibold"
-            letterSpacing="widest"
-            textTransform="uppercase"
-            color="fg.subtle"
-            mb={1}
-          >
-            End
-          </Text>
-          <Text
-            fontSize="md"
-            fontWeight="bold"
-            color={isUp ? "green.500" : "red.500"}
-            fontVariantNumeric="tabular-nums"
-          >
-            ${endBalance.toFixed(2)}
-          </Text>
-        </Box>
-        <Box px={5} py={4} borderRightWidth="1px" borderColor="border.subtle">
-          <Text
-            fontSize="xs"
-            fontWeight="semibold"
-            letterSpacing="widest"
-            textTransform="uppercase"
-            color="fg.subtle"
-            mb={1}
-          >
-            Income
-          </Text>
-          <Text
-            fontSize="md"
-            fontWeight="semibold"
-            color={income > 0 ? "green.500" : "fg.subtle"}
-            fontVariantNumeric="tabular-nums"
-          >
-            {income > 0 ? `+$${income.toFixed(2)}` : "—"}
-          </Text>
-        </Box>
-        <Box px={5} py={4}>
-          <Text
-            fontSize="xs"
-            fontWeight="semibold"
-            letterSpacing="widest"
-            textTransform="uppercase"
-            color="fg.subtle"
-            mb={1}
-          >
-            Expenses
-          </Text>
-          <Text
-            fontSize="md"
-            fontWeight="semibold"
-            color={expenses > 0 ? "red.500" : "fg.subtle"}
-            fontVariantNumeric="tabular-nums"
-          >
-            {expenses > 0 ? `-$${expenses.toFixed(2)}` : "—"}
-          </Text>
-        </Box>
-      </Grid>
+              <Flex align="center" gap={2}>
+                <Badge
+                  colorPalette={isUp ? "green" : "red"}
+                  variant="subtle"
+                  borderRadius="full"
+                  px={2.5}
+                  fontSize="xs"
+                >
+                  {isUp ? "+" : "−"}${Math.abs(endBalance).toFixed(2)}
+                </Badge>
+                {hasTransactions && (
+                  <Text fontSize="xs" color="fg.subtle">
+                    {transactions.length}
+                  </Text>
+                )}
+              </Flex>
+            </Flex>
+          </AccordionItemTrigger>
 
-      {transactions.length > 0 && (
-        <Box borderTopWidth="1px" borderColor="border.subtle" pt={2} pb={2}>
-          {transactions.map((tx) => (
-            <TxRow key={tx.id} tx={tx} onEdit={onEdit} onDelete={onDelete} />
-          ))}
-        </Box>
-      )}
+          {/* 2×2 stats — always visible, lives outside the collapsible content */}
+          <Grid templateColumns="1fr 1fr">
+            <Box
+              px={5}
+              py={4}
+              borderRightWidth="1px"
+              borderBottomWidth="1px"
+              borderColor="border.subtle"
+            >
+              <Text
+                fontSize="xs"
+                fontWeight="semibold"
+                letterSpacing="widest"
+                textTransform="uppercase"
+                color="fg.subtle"
+                mb={1}
+              >
+                Start
+              </Text>
+              <Text
+                fontSize="md"
+                fontWeight="semibold"
+                color="fg.muted"
+                fontVariantNumeric="tabular-nums"
+              >
+                ${startBalance.toFixed(2)}
+              </Text>
+            </Box>
+            <Box
+              px={5}
+              py={4}
+              borderBottomWidth="1px"
+              borderColor="border.subtle"
+            >
+              <Text
+                fontSize="xs"
+                fontWeight="semibold"
+                letterSpacing="widest"
+                textTransform="uppercase"
+                color="fg.subtle"
+                mb={1}
+              >
+                Expenses
+              </Text>
+              <Text
+                fontSize="md"
+                fontWeight="semibold"
+                color={expenses > 0 ? "red.500" : "fg.subtle"}
+                fontVariantNumeric="tabular-nums"
+              >
+                {expenses > 0 ? `-$${expenses.toFixed(2)}` : "—"}
+              </Text>
+            </Box>
+            <Box
+              px={5}
+              py={4}
+              borderRightWidth="1px"
+              borderColor="border.subtle"
+            >
+              <Text
+                fontSize="xs"
+                fontWeight="semibold"
+                letterSpacing="widest"
+                textTransform="uppercase"
+                color="fg.subtle"
+                mb={1}
+              >
+                Income
+              </Text>
+              <Text
+                fontSize="md"
+                fontWeight="semibold"
+                color={income > 0 ? "green.500" : "fg.subtle"}
+                fontVariantNumeric="tabular-nums"
+              >
+                {income > 0 ? `+$${income.toFixed(2)}` : "—"}
+              </Text>
+            </Box>
+            <Box px={5} py={4}>
+              <Text
+                fontSize="xs"
+                fontWeight="semibold"
+                letterSpacing="widest"
+                textTransform="uppercase"
+                color="fg.subtle"
+                mb={1}
+              >
+                Balance
+              </Text>
+              <Text
+                fontSize="md"
+                fontWeight="bold"
+                color={isUp ? "green.500" : "red.500"}
+                fontVariantNumeric="tabular-nums"
+              >
+                ${endBalance.toFixed(2)}
+              </Text>
+            </Box>
+          </Grid>
+
+          {/* Collapsible transactions */}
+          <AccordionItemContent px={0} pb={0}>
+            <Separator />
+            <Box borderTopWidth="1px" borderColor="border.subtle" pt={2} pb={2}>
+              {transactions.map((tx) => (
+                <TxRow
+                  key={tx.id}
+                  tx={tx}
+                  onEdit={onEdit}
+                  onDelete={onDelete}
+                />
+              ))}
+            </Box>
+          </AccordionItemContent>
+        </AccordionItem>
+      </AccordionRoot>
     </Box>
   );
 }
@@ -795,19 +848,18 @@ function EventRow({
   const [open, setOpen] = useState(false);
   const hasTransactions = transactions.length > 0;
 
+  // Each EventRow renders 6 GridItems that slot directly into the parent Grid.
+  // No nested Grid needed — the outer shared Grid handles all column alignment.
   return (
-    <Box>
-      <Grid
-        templateColumns="1.6fr 1fr 1fr 1fr 1.2fr auto"
-        gap={3}
+    <>
+      {/* Col 1 — Date */}
+      <GridItem
         px={5}
         py={3.5}
-        alignItems="center"
+        alignSelf="center"
         _hover={{ bg: "bg.muted" }}
         transition="background 0.15s"
         borderRadius="xl"
-        cursor={hasTransactions ? "pointer" : "default"}
-        onClick={() => hasTransactions && setOpen((p) => !p)}
       >
         <Flex align="center" gap={3}>
           {isUp ? (
@@ -819,16 +871,17 @@ function EventRow({
             {format(date, "MMM dd, yyyy")}
           </Text>
         </Flex>
+      </GridItem>
+
+      {/* Col 2 — Start */}
+      <GridItem alignSelf="center" py={3.5}>
         <Text fontSize="sm" color="fg.muted" fontVariantNumeric="tabular-nums">
           ${startBalance.toFixed(2)}
         </Text>
-        <Text
-          fontSize="sm"
-          color={income > 0 ? "green.500" : "fg.subtle"}
-          fontVariantNumeric="tabular-nums"
-        >
-          {income > 0 ? `+$${income.toFixed(2)}` : "—"}
-        </Text>
+      </GridItem>
+
+      {/* Col 3 — Expenses */}
+      <GridItem alignSelf="center" py={3.5}>
         <Text
           fontSize="sm"
           color={expenses > 0 ? "red.500" : "fg.subtle"}
@@ -836,7 +889,21 @@ function EventRow({
         >
           {expenses > 0 ? `-$${expenses.toFixed(2)}` : "—"}
         </Text>
-        <Flex align="center" justify="space-between" gap={2}>
+      </GridItem>
+
+      {/* Col 4 — Income */}
+      <GridItem alignSelf="center" py={3.5}>
+        <Text
+          fontSize="sm"
+          color={income > 0 ? "green.500" : "fg.subtle"}
+          fontVariantNumeric="tabular-nums"
+        >
+          {income > 0 ? `+$${income.toFixed(2)}` : "—"}
+        </Text>
+      </GridItem>
+      {/* Col 5 — Balance + delta badge */}
+      <GridItem alignSelf="center" py={3.5}>
+        <Flex align="center" gap={2}>
           <Text
             fontSize="sm"
             fontWeight="bold"
@@ -845,47 +912,78 @@ function EventRow({
           >
             ${endBalance.toFixed(2)}
           </Text>
+        </Flex>
+      </GridItem>
+
+      {/* Col 6 — Transactions expand toggle */}
+      <GridItem alignSelf="center" py={3.5} pr={5}>
+        <Flex gap="2" alignItems="center">
           <Badge
             size="sm"
             colorPalette={isUp ? "green" : "red"}
             variant="subtle"
             borderRadius="full"
+            height="min-content"
             px={2}
           >
             {isUp ? "+" : "−"}${Math.abs(delta).toFixed(2)}
           </Badge>
+          {hasTransactions && (
+            <Button
+              size="xs"
+              variant="ghost"
+              borderRadius="lg"
+              color="fg.subtle"
+              onClick={() => setOpen((p) => !p)}
+            >
+              {open ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+              <Text fontSize="xs" color="fg.subtle">
+                {transactions.length}
+              </Text>
+            </Button>
+          )}
         </Flex>
-        <Flex w={5} justify="center" color="fg.subtle">
-          {hasTransactions ? (
-            open ? (
-              <ChevronUp size={14} />
-            ) : (
-              <ChevronDown size={14} />
-            )
-          ) : null}
-        </Flex>
-      </Grid>
+      </GridItem>
 
+      {/* Expanded transactions — span all 6 columns */}
       {open && hasTransactions && (
-        <Box
-          mx={5}
-          mb={2}
-          bg="bg.muted"
-          borderRadius="xl"
-          borderWidth="1px"
-          borderColor="border.subtle"
-          overflow="hidden"
-        >
-          {transactions.map((tx) => (
-            <TxRow key={tx.id} tx={tx} onEdit={onEdit} onDelete={onDelete} />
-          ))}
-        </Box>
+        <GridItem colSpan={6} px={5} pb={2}>
+          <Box
+            bg="bg.muted"
+            borderRadius="xl"
+            borderWidth="1px"
+            borderColor="border.subtle"
+            overflow="hidden"
+          >
+            {transactions.map((tx) => (
+              <TxRow key={tx.id} tx={tx} onEdit={onEdit} onDelete={onDelete} />
+            ))}
+          </Box>
+        </GridItem>
       )}
 
-      {!isLast && <Separator opacity={0.06} />}
-    </Box>
+      {/* Separator — span all 6 columns */}
+      {!isLast && (
+        <GridItem colSpan={6}>
+          <Separator opacity={0.06} />
+        </GridItem>
+      )}
+    </>
   );
 }
+
+// ─── Shared table layout ─────────────────────────────────────────────────────
+// Single source of truth — header and EventRow both reference this so columns
+// are always pixel-perfect aligned regardless of content.
+const TABLE_COLUMNS = "1.8fr 1fr 1fr 1fr 1fr 1fr";
+const TABLE_HEADERS = [
+  "Date",
+  "Start",
+  "Expenses",
+  "Income",
+  "Balance",
+  "Transactions",
+];
 
 // ─── App ──────────────────────────────────────────────────────────────────────
 
@@ -922,10 +1020,14 @@ export default function App() {
     transactions: transactions.map(txToDate),
   };
 
-  const { budget, dailyBudget, events, totalBalance, balanceToday } =
-    useBudget(budgetInput);
-
-  const totalSpent = budget - totalBalance;
+  const {
+    budget,
+    dailyBudget,
+    events,
+    totalBalance,
+    balanceToday,
+    totalSpent,
+  } = useBudget(budgetInput);
 
   // ── Enrich events with their source transactions ──────────────────────────
   const enrichedEvents = events.map((ev) => ({
@@ -974,7 +1076,7 @@ export default function App() {
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
     <Provider>
-      <Box minH="100vh" bg="bg" pt={12} pb={20}>
+      <Box minH="100vh" bg="bg" pt={4} pb={20}>
         <Container maxW="900px">
           <Stack gap={10}>
             {/* ── Header ── */}
@@ -992,16 +1094,22 @@ export default function App() {
                   {format(parseISO(config.rangeFrom), "MMM d")} –{" "}
                   {format(parseISO(config.rangeTo), "MMM d, yyyy")}
                 </Badge>
-                <Badge
-                  colorPalette="gray"
-                  variant="outline"
-                  borderRadius="full"
-                  px={3}
-                  py={1}
-                  fontSize="xs"
-                >
-                  {events.length} days
-                </Badge>
+                <Box flex="1">
+                  <Badge
+                    colorPalette="gray"
+                    variant="outline"
+                    borderRadius="full"
+                    px={3}
+                    py={1}
+                    fontSize="xs"
+                  >
+                    {events.length} days
+                  </Badge>
+                </Box>
+
+                <Box alignSelf="end">
+                  <MethodDrawer />
+                </Box>
               </Flex>
 
               <Flex justify="space-between" align="flex-start" gap={4}>
@@ -1173,7 +1281,7 @@ export default function App() {
                     ))}
                   </Stack>
 
-                  {/* Desktop: table */}
+                  {/* Desktop: table — single Grid owns all columns; header + rows are GridItems */}
                   <Box
                     display={{ base: "none", md: "block" }}
                     bg="bg.subtle"
@@ -1182,37 +1290,31 @@ export default function App() {
                     borderRadius="2xl"
                     overflow="hidden"
                   >
-                    <Grid
-                      templateColumns="1.6fr 1fr 1fr 1fr 1.2fr auto"
-                      gap={3}
-                      px={5}
-                      py={3}
-                      bg="bg.muted"
-                      borderBottomWidth="1px"
-                      borderColor="border.subtle"
-                    >
-                      {[
-                        "Date",
-                        "Start",
-                        "Income",
-                        "Expenses",
-                        "End Balance",
-                        "",
-                      ].map((h) => (
-                        <Text
+                    <Grid templateColumns={TABLE_COLUMNS}>
+                      {/* ── Header row ── */}
+                      {TABLE_HEADERS.map((h, i) => (
+                        <GridItem
                           key={h}
-                          fontSize="xs"
-                          fontWeight="semibold"
-                          letterSpacing="widest"
-                          textTransform="uppercase"
-                          color="fg.subtle"
+                          px={i === 0 ? 5 : 0}
+                          pr={i === TABLE_HEADERS.length - 1 ? 5 : 0}
+                          py={3}
+                          bg="bg.muted"
+                          borderBottomWidth="1px"
+                          borderColor="border.subtle"
                         >
-                          {h}
-                        </Text>
+                          <Text
+                            fontSize="xs"
+                            fontWeight="semibold"
+                            letterSpacing="widest"
+                            textTransform="uppercase"
+                            color="fg.subtle"
+                          >
+                            {h}
+                          </Text>
+                        </GridItem>
                       ))}
-                    </Grid>
 
-                    <Box py={2}>
+                      {/* ── Data rows — each EventRow renders 6 GridItems ── */}
                       {enrichedEvents.map((ev, idx) => (
                         <EventRow
                           key={idx}
@@ -1222,26 +1324,28 @@ export default function App() {
                           onDelete={handleDelete}
                         />
                       ))}
-                    </Box>
 
-                    <Flex
-                      px={5}
-                      py={3}
-                      borderTopWidth="1px"
-                      borderColor="border.subtle"
-                      justify="space-between"
-                      align="center"
-                      bg="bg.muted"
-                    >
-                      <Text fontSize="xs" color="fg.subtle">
-                        {events.length} day{events.length !== 1 ? "s" : ""}{" "}
-                        tracked
-                      </Text>
-                      <Text fontSize="xs" color="fg.subtle">
-                        {transactions.length} transaction
-                        {transactions.length !== 1 ? "s" : ""}
-                      </Text>
-                    </Flex>
+                      {/* ── Footer row ── */}
+                      <GridItem
+                        colSpan={6}
+                        px={5}
+                        py={3}
+                        bg="bg.muted"
+                        borderTopWidth="1px"
+                        borderColor="border.subtle"
+                      >
+                        <Flex justify="space-between" align="center">
+                          <Text fontSize="xs" color="fg.subtle">
+                            {events.length} day{events.length !== 1 ? "s" : ""}{" "}
+                            tracked
+                          </Text>
+                          <Text fontSize="xs" color="fg.subtle">
+                            {transactions.length} transaction
+                            {transactions.length !== 1 ? "s" : ""}
+                          </Text>
+                        </Flex>
+                      </GridItem>
+                    </Grid>
                   </Box>
                 </>
               )}
@@ -1250,5 +1354,192 @@ export default function App() {
         </Container>
       </Box>
     </Provider>
+  );
+}
+
+// ─── MethodDrawer ─────────────────────────────────────────────────────────────
+
+import {
+  DrawerRoot,
+  DrawerTrigger,
+  DrawerContent,
+  DrawerHeader,
+  DrawerBody,
+} from "@chakra-ui/react";
+
+const METHOD_STEPS = [
+  {
+    n: "01",
+    title: "Set a period",
+    desc: "Choose a start and end date — a trip, a pay cycle, a project window. Decide the total you can spend across it.",
+  },
+  {
+    n: "02",
+    title: "Daily allowance",
+    desc: "Each day opens with a fixed allocation. Spend less and the surplus carries into tomorrow. Overspend and your next days shrink to compensate — automatically.",
+  },
+  {
+    n: "03",
+    title: "Log transactions",
+    desc: "Record what comes in (credits) and goes out (debits). The running balance tells you exactly where you stand in real time.",
+  },
+  {
+    n: "04",
+    title: "Watch the burn",
+    desc: "The period burn bar shows whether you're pacing ahead or behind. One glance tells you if today is a spend day or a save day.",
+  },
+];
+
+const METHOD_USE_CASES = [
+  "Daily pocket money",
+  "Discretionary spending on trips",
+  "Fun money within a pay cycle",
+  "Eating out, coffee, impulse buys",
+];
+
+function MethodDrawer() {
+  return (
+    <DrawerRoot placement="end" size="sm">
+      <DrawerTrigger asChild>
+        <Button
+          size="xs"
+          variant="plain"
+          borderBottom="1px solid"
+          borderBottomColor="gray.200"
+          borderRadius="none"
+        >
+          Why?
+        </Button>
+      </DrawerTrigger>
+
+      <Portal>
+        <DrawerBackdrop />
+        <DrawerPositioner>
+          <DrawerContent borderRadius="2xl" m={3}>
+            <DrawerHeader
+              borderBottomWidth="1px"
+              borderColor="border.subtle"
+              pb="2"
+            >
+              <Flex align="center" gap={2.5}>
+                <Box
+                  w={2}
+                  h={2}
+                  borderRadius="full"
+                  bg="purple.400"
+                  flexShrink={0}
+                />
+                <Text fontSize="sm" fontWeight="semibold" color="fg">
+                  How this budget works
+                </Text>
+              </Flex>
+            </DrawerHeader>
+
+            <DrawerBody py={5}>
+              <Stack gap={6}>
+                {/* Tagline */}
+                <Text fontSize="sm" color="fg.muted" lineHeight="tall">
+                  This tracker converts your total budget into a daily
+                  allowance. Unspent balance carries forward — frugal days build
+                  a cushion for bigger ones. One glance at the burn bar tells
+                  you whether today is a spend day or a save day.
+                </Text>
+
+                <Separator />
+
+                {/* Steps */}
+                <Stack gap={4}>
+                  <SectionLabel>How it works</SectionLabel>
+                  {METHOD_STEPS.map(({ n, title, desc }) => (
+                    <Flex key={n} gap={3} align="flex-start">
+                      <Text
+                        fontSize="xs"
+                        fontWeight="semibold"
+                        color="purple.500"
+                        flexShrink={0}
+                        mt={0.5}
+                        minW="18px"
+                      >
+                        {n}
+                      </Text>
+                      <Box>
+                        <Text
+                          fontSize="sm"
+                          fontWeight="semibold"
+                          color="fg"
+                          mb={1}
+                        >
+                          {title}
+                        </Text>
+                        <Text fontSize="sm" color="fg.muted" lineHeight="tall">
+                          {desc}
+                        </Text>
+                      </Box>
+                    </Flex>
+                  ))}
+                </Stack>
+
+                <Separator />
+
+                {/* Use cases */}
+                <Stack gap={3}>
+                  <SectionLabel>When to use it</SectionLabel>
+                  <Stack gap={2}>
+                    {METHOD_USE_CASES.map((uc) => (
+                      <Flex key={uc} align="center" gap={2.5}>
+                        <Box
+                          w={1.5}
+                          h={1.5}
+                          borderRadius="full"
+                          bg="purple.400"
+                          flexShrink={0}
+                        />
+                        <Text fontSize="sm" color="fg.muted">
+                          {uc}
+                        </Text>
+                      </Flex>
+                    ))}
+                  </Stack>
+                </Stack>
+
+                <Separator />
+
+                {/* Why it works callout */}
+                <Box
+                  bg="bg.subtle"
+                  borderWidth="1px"
+                  borderColor="border.subtle"
+                  borderRadius="xl"
+                  px={4}
+                  py={3.5}
+                >
+                  <Text
+                    fontSize="xs"
+                    fontWeight="semibold"
+                    color="purple.500"
+                    letterSpacing="wider"
+                    textTransform="uppercase"
+                    mb={2}
+                  >
+                    Why it works
+                  </Text>
+                  <Text fontSize="sm" color="fg.muted" lineHeight="tall">
+                    Most budgets fail because the limit feels distant — you can
+                    always fix it next week. A daily allowance makes every
+                    decision immediate. Spending $15 on lunch isn't abstract;
+                    it's 30% of today's budget. That psychological immediacy
+                    changes behavior without requiring willpower.
+                  </Text>
+                </Box>
+              </Stack>
+            </DrawerBody>
+
+            <DrawerCloseTrigger>
+              <CloseButton size="sm" />
+            </DrawerCloseTrigger>
+          </DrawerContent>
+        </DrawerPositioner>
+      </Portal>
+    </DrawerRoot>
   );
 }
