@@ -426,7 +426,7 @@ function ConfigPanel({ config, onSave, onCancel }: ConfigPanelProps) {
           onClick={() => onSave(draft)}
         >
           <Check size={14} />
-          Save config
+          Save
         </Button>
       </Flex>
     </Box>
@@ -1081,7 +1081,12 @@ export default function App() {
                       overview
                     </Box>
                   </Heading>
-                  <ColorModeToggle />
+                  <Flex align="end" gap={0}>
+                    <Box alignSelf="end" lineHeight="2">
+                      <MethodDrawer />
+                    </Box>
+                    <ColorModeToggle />
+                  </Flex>
                 </Flex>
                 <Text fontSize="sm" color="fg.muted">
                   Set up your budget period to get started.
