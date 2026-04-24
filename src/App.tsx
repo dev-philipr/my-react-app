@@ -1,6 +1,7 @@
 import { useState, useEffect, useId, useCallback } from "react";
 import { useBudget } from "./hooks/use-budget";
 import { Provider } from "./components/ui/provider";
+import { useColorMode } from "./components/ui/color-mode";
 import { UTCDate } from "@date-fns/utc";
 import {
   Box,
@@ -35,6 +36,8 @@ import {
   TrendingDown,
   Check,
   Settings,
+  Sun,
+  Moon,
 } from "lucide-react";
 import {
   AccordionRoot,
@@ -74,7 +77,7 @@ interface BudgetBarProps {
 interface ConfigPanelProps {
   config: BudgetConfig;
   onSave: (c: BudgetConfig) => void;
-  onCancel: () => void;
+  onCancel?: () => void; // optional — hidden on first-run
 }
 
 interface TransactionFormProps {
@@ -111,40 +114,23 @@ const STORAGE = {
   TRANSACTIONS: "budget_transactions_v1",
 } as const;
 
-// ─── Defaults ─────────────────────────────────────────────────────────────────
-
-const DEFAULT_CONFIG: BudgetConfig = {
-  rangeFrom: "2026-04-18",
-  rangeTo: "2026-04-24",
-  budget: 500,
-  dailyBudget: 50,
-};
-
-const DEFAULT_TRANSACTIONS: Transaction[] = [
-  { id: "seed1", credit: 0, debit: 7.5, date: "2026-04-18" },
-  { id: "seed2", credit: 0, debit: 42.97, date: "2026-04-19" },
-  { id: "seed3", credit: 125.12, debit: 76.67, date: "2026-04-20" },
-  { id: "seed4", credit: 0, debit: 329.29, date: "2026-04-21" },
-  { id: "seed6", credit: 40.97, debit: 52.58, date: "2026-04-23" },
-];
-
 // ─── localStorage helpers ─────────────────────────────────────────────────────
 
-function loadConfig(): BudgetConfig {
+function loadConfig(): BudgetConfig | null {
   try {
     const raw = localStorage.getItem(STORAGE.CONFIG);
-    return raw ? (JSON.parse(raw) as BudgetConfig) : DEFAULT_CONFIG;
+    return raw ? (JSON.parse(raw) as BudgetConfig) : null;
   } catch {
-    return DEFAULT_CONFIG;
+    return null;
   }
 }
 
 function loadTransactions(): Transaction[] {
   try {
     const raw = localStorage.getItem(STORAGE.TRANSACTIONS);
-    return raw ? (JSON.parse(raw) as Transaction[]) : DEFAULT_TRANSACTIONS;
+    return raw ? (JSON.parse(raw) as Transaction[]) : [];
   } catch {
-    return DEFAULT_TRANSACTIONS;
+    return [];
   }
 }
 
@@ -171,6 +157,15 @@ function txToDate(tx: Transaction): {
   return { credit: tx.credit, debit: tx.debit, date: parseISO(tx.date) };
 }
 
+// ─── Empty config seed for first-run ConfigPanel ──────────────────────────────
+
+const EMPTY_CONFIG: BudgetConfig = {
+  rangeFrom: "",
+  rangeTo: "",
+  budget: 0,
+  dailyBudget: 0,
+};
+
 // ─── Section label ────────────────────────────────────────────────────────────
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
@@ -187,7 +182,23 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
-// ─── StatTile ─────────────────────────────────────────────────────────────────
+// ─── ColorModeToggle ──────────────────────────────────────────────────────────
+
+function ColorModeToggle() {
+  const { colorMode, toggleColorMode } = useColorMode();
+  return (
+    <IconButton
+      pt="1"
+      aria-label="Toggle color mode"
+      size="sm"
+      variant="ghost"
+      borderRadius="xl"
+      onClick={toggleColorMode}
+    >
+      {colorMode === "light" ? <Moon size={15} /> : <Sun size={15} />}
+    </IconButton>
+  );
+}
 
 function StatTile({ label, value, isPositive, sub }: StatTileProps) {
   const numColor =
@@ -395,10 +406,18 @@ function ConfigPanel({ config, onSave, onCancel }: ConfigPanelProps) {
       </Grid>
 
       <Flex gap={3} justify="flex-end">
-        <Button size="sm" variant="ghost" borderRadius="lg" onClick={onCancel}>
-          <X size={14} />
-          Cancel
-        </Button>
+        {/* Only show Cancel when there's an existing config to revert to */}
+        {onCancel && (
+          <Button
+            size="sm"
+            variant="ghost"
+            borderRadius="lg"
+            onClick={onCancel}
+          >
+            <X size={14} />
+            Cancel
+          </Button>
+        )}
         <Button
           size="sm"
           colorPalette="purple"
@@ -848,8 +867,6 @@ function EventRow({
   const [open, setOpen] = useState(false);
   const hasTransactions = transactions.length > 0;
 
-  // Each EventRow renders 6 GridItems that slot directly into the parent Grid.
-  // No nested Grid needed — the outer shared Grid handles all column alignment.
   return (
     <>
       {/* Col 1 — Date */}
@@ -901,6 +918,7 @@ function EventRow({
           {income > 0 ? `+$${income.toFixed(2)}` : "—"}
         </Text>
       </GridItem>
+
       {/* Col 5 — Balance + delta badge */}
       <GridItem alignSelf="center" py={3.5}>
         <Flex align="center" gap={2}>
@@ -972,9 +990,8 @@ function EventRow({
   );
 }
 
-// ─── Shared table layout ─────────────────────────────────────────────────────
-// Single source of truth — header and EventRow both reference this so columns
-// are always pixel-perfect aligned regardless of content.
+// ─── Shared table layout ──────────────────────────────────────────────────────
+
 const TABLE_COLUMNS = "1.8fr 1fr 1fr 1fr 1fr 1fr";
 const TABLE_HEADERS = [
   "Date",
@@ -989,55 +1006,20 @@ const TABLE_HEADERS = [
 
 export default function App() {
   // ── Persisted state ──────────────────────────────────────────────────────────
-  const [config, setConfig] = useState<BudgetConfig>(loadConfig);
+  const [config, setConfig] = useState<BudgetConfig | null>(loadConfig);
   const [transactions, setTransactions] =
     useState<Transaction[]>(loadTransactions);
 
   // Persist on every change
   useEffect(() => {
-    saveConfig(config);
+    if (config) saveConfig(config);
   }, [config]);
+
   useEffect(() => {
     saveTransactions(transactions);
   }, [transactions]);
 
-  // ── UI state ─────────────────────────────────────────────────────────────────
-  const [showConfig, setShowConfig] = useState(false);
-  const [showForm, setShowForm] = useState(false);
-  const [editingTx, setEditingTx] = useState<Transaction | null>(null);
-
-  // ── useBudget ────────────────────────────────────────────────────────────────
-  // useBudget expects Date objects so we map on the way in
-  const budgetInput = {
-    config: {
-      range: {
-        from: parseISO(config.rangeFrom),
-        to: parseISO(config.rangeTo),
-      },
-      budget: config.budget,
-      dailyBudget: config.dailyBudget,
-    },
-    transactions: transactions.map(txToDate),
-  };
-
-  const {
-    budget,
-    dailyBudget,
-    events,
-    totalBalance,
-    balanceToday,
-    totalSpent,
-  } = useBudget(budgetInput);
-
-  // ── Enrich events with their source transactions ──────────────────────────
-  const enrichedEvents = events.map((ev) => ({
-    ...ev,
-    transactions: transactions.filter(
-      (tx) => tx.date === format(ev.date, "yyyy-MM-dd"),
-    ),
-  }));
-
-  // ── Handlers ─────────────────────────────────────────────────────────────────
+  // ── Handlers (declared before early return so they're stable references) ─────
   const handleSaveConfig = useCallback((c: BudgetConfig) => {
     setConfig(c);
     setShowConfig(false);
@@ -1073,9 +1055,79 @@ export default function App() {
     setEditingTx(null);
   }, []);
 
+  // ── UI state ─────────────────────────────────────────────────────────────────
+  const [showConfig, setShowConfig] = useState(false);
+  const [showForm, setShowForm] = useState(false);
+  const [editingTx, setEditingTx] = useState<Transaction | null>(null);
+
+  // ── First-run gate — no config yet ───────────────────────────────────────────
+  if (!config) {
+    return (
+      <Provider defaultTheme="light">
+        <Box minH="100vh" bg="bg" pt={4} pb={20}>
+          <Container maxW="900px">
+            <Stack gap={8}>
+              <Stack gap={3}>
+                <Flex justify="space-between" align="center">
+                  <Heading
+                    size="4xl"
+                    fontWeight="black"
+                    letterSpacing="-0.04em"
+                    color="fg"
+                    lineHeight="1"
+                  >
+                    Budget{" "}
+                    <Box as="span" color="fg.muted" fontWeight="light">
+                      overview
+                    </Box>
+                  </Heading>
+                  <ColorModeToggle />
+                </Flex>
+                <Text fontSize="sm" color="fg.muted">
+                  Set up your budget period to get started.
+                </Text>
+              </Stack>
+              <ConfigPanel config={EMPTY_CONFIG} onSave={handleSaveConfig} />
+            </Stack>
+          </Container>
+        </Box>
+      </Provider>
+    );
+  }
+
+  // ── useBudget — only runs once config is non-null ────────────────────────────
+  const budgetInput = {
+    config: {
+      range: {
+        from: parseISO(config.rangeFrom),
+        to: parseISO(config.rangeTo),
+      },
+      budget: config.budget,
+      dailyBudget: config.dailyBudget,
+    },
+    transactions: transactions.map(txToDate),
+  };
+
+  const {
+    budget,
+    dailyBudget,
+    events,
+    totalBalance,
+    balanceToday,
+    totalSpent,
+  } = useBudget(budgetInput);
+
+  // ── Enrich events with their source transactions ───────────────────────────
+  const enrichedEvents = events.map((ev) => ({
+    ...ev,
+    transactions: transactions.filter(
+      (tx) => tx.date === format(ev.date, "yyyy-MM-dd"),
+    ),
+  }));
+
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
-    <Provider>
+    <Provider defaultTheme="light">
       <Box minH="100vh" bg="bg" pt={4} pb={20}>
         <Container maxW="900px">
           <Stack gap={10}>
@@ -1107,9 +1159,12 @@ export default function App() {
                   </Badge>
                 </Box>
 
-                <Box alignSelf="end">
-                  <MethodDrawer />
-                </Box>
+                <Flex align="end" gap={0}>
+                  <Box alignSelf="end" lineHeight="2">
+                    <MethodDrawer />
+                  </Box>
+                  <ColorModeToggle />
+                </Flex>
               </Flex>
 
               <Flex justify="space-between" align="flex-start" gap={4}>
@@ -1133,9 +1188,7 @@ export default function App() {
                   borderRadius="xl"
                   flexShrink={0}
                   mt={1}
-                  onClick={() => {
-                    setShowConfig((p) => !p);
-                  }}
+                  onClick={() => setShowConfig((p) => !p)}
                 >
                   {showConfig ? <X size={14} /> : <Settings size={14} />}
                   {showConfig ? "Close" : "Configure"}
@@ -1281,7 +1334,7 @@ export default function App() {
                     ))}
                   </Stack>
 
-                  {/* Desktop: table — single Grid owns all columns; header + rows are GridItems */}
+                  {/* Desktop: table */}
                   <Box
                     display={{ base: "none", md: "block" }}
                     bg="bg.subtle"
@@ -1314,7 +1367,7 @@ export default function App() {
                         </GridItem>
                       ))}
 
-                      {/* ── Data rows — each EventRow renders 6 GridItems ── */}
+                      {/* ── Data rows ── */}
                       {enrichedEvents.map((ev, idx) => (
                         <EventRow
                           key={idx}
