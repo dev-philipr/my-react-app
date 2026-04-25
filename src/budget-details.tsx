@@ -1234,7 +1234,7 @@ const METHOD_STEPS = [
   {
     n: "03",
     title: "Log transactions",
-    desc: "Record what comes in (credits) and goes out (debits). The running balance tells you exactly where you stand in real time.",
+    desc: "Record what comes in (income) and goes out (expenses). The daily balance updates instantly so you always know where you stand.",
   },
   {
     n: "04",
