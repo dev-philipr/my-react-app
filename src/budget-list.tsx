@@ -34,6 +34,7 @@ import type {
   BudgetConfig,
 } from "./hooks/use-budgets";
 import { MethodDrawer } from "./budget-details";
+import { useBudget } from "./hooks/use-budget";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -408,10 +409,38 @@ interface BudgetCardProps {
 function BudgetCard({ meta, entry, onOpen, onDelete }: BudgetCardProps) {
   const [confirmDelete, setConfirmDelete] = useState(false);
 
+  const { totalBalance, totalSpent, budget } = useBudget(
+    entry
+      ? {
+          config: {
+            range: {
+              from: parseISO(entry.config.rangeFrom),
+              to: parseISO(entry.config.rangeTo),
+            },
+            budget: entry.config.budget,
+            dailyBudget: entry.config.dailyBudget,
+          },
+          transactions: entry.transactions.map((tx) => ({
+            credit: tx.credit,
+            debit: tx.debit,
+            date: parseISO(tx.date),
+          })),
+        }
+      : {
+          config: {
+            range: { from: new Date(), to: new Date() },
+            budget: 0,
+            dailyBudget: 0,
+          },
+          transactions: [],
+        },
+  );
+
   if (!entry) return null;
 
-  const { totalSpent, net, pct, status, days } = deriveSummary(entry);
-  const isPositive = net >= 0;
+  const { status, days } = deriveSummary(entry);
+  const pct = budget > 0 ? Math.min((totalSpent / budget) * 100, 100) : 0;
+  const isPositive = totalBalance >= 0;
 
   const dateRange = (() => {
     try {
@@ -511,7 +540,7 @@ function BudgetCard({ meta, entry, onOpen, onDelete }: BudgetCardProps) {
           </Flex>
         </Flex>
 
-        {/* Net amount */}
+        {/* Total balance */}
         <Flex align="baseline" gap={1.5} mb={1}>
           <Text
             fontSize="2xl"
@@ -519,10 +548,10 @@ function BudgetCard({ meta, entry, onOpen, onDelete }: BudgetCardProps) {
             letterSpacing="-0.04em"
             color={isPositive ? "green.500" : "red.500"}
           >
-            ${Math.abs(net).toFixed(2)}
+            ${Math.abs(totalBalance).toFixed(2)}
           </Text>
           <Text fontSize="xs" color="fg.subtle">
-            net
+            balance
           </Text>
         </Flex>
 
@@ -548,7 +577,7 @@ function BudgetCard({ meta, entry, onOpen, onDelete }: BudgetCardProps) {
               color="fg"
               fontVariantNumeric="tabular-nums"
             >
-              ${entry.config.budget.toFixed(0)}
+              ${budget.toFixed(0)}
             </Text>
           </Box>
           <Box flex="1">
