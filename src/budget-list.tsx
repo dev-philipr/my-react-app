@@ -11,6 +11,7 @@ import {
   Field,
   Stack,
   Text,
+  Icon,
 } from "@chakra-ui/react";
 import { parseISO, differenceInDays, format } from "date-fns";
 import {
@@ -445,20 +446,6 @@ function BudgetCard({ meta, entry, onOpen, onDelete }: BudgetCardProps) {
         {/* Header row */}
         <Flex justify="space-between" align="flex-start" mb={4}>
           <Flex align="center" gap={3}>
-            <Box
-              w={10}
-              h={10}
-              borderRadius="xl"
-              bg={`${meta.color}.subtle`}
-              display="flex"
-              alignItems="center"
-              justifyContent="center"
-              flexShrink={0}
-            >
-              <Text fontSize="sm" fontWeight="bold" color={`${meta.color}.fg`}>
-                {meta.name.slice(0, 2).toUpperCase()}
-              </Text>
-            </Box>
             <Box>
               <Text
                 fontSize="sm"
@@ -511,15 +498,14 @@ function BudgetCard({ meta, entry, onOpen, onDelete }: BudgetCardProps) {
                 variant="ghost"
                 colorPalette="red"
                 borderRadius="lg"
-                opacity={0}
-                _groupHover={{ opacity: 1 }}
-                transition="opacity 0.15s"
                 onClick={(e) => {
                   e.stopPropagation();
                   setConfirmDelete(true);
                 }}
               >
-                <Trash2 size={12} />
+                <Icon color="red.500">
+                  <Trash2 size={12} />
+                </Icon>
               </IconButton>
             )}
           </Flex>
@@ -890,7 +876,7 @@ export default function BudgetList({
                   minH="200px"
                   cursor="pointer"
                   transition="all 0.2s"
-                  _hover={{ borderColor: "purple.400", bg: "purple.subtle" }}
+                  _hover={{ borderColor: "green.400", bg: "green.subtle" }}
                   onClick={() => setShowCreate(true)}
                 >
                   <Flex direction="column" align="center" gap={2}>

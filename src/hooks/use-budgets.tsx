@@ -6,7 +6,7 @@ export interface BudgetMeta {
   id: string;
   name: string;
   createdAt: string; // ISO
-  color: string; // e.g. "purple", "blue", "green"
+  color: string; // e.g. "green", "blue", "green"
 }
 
 export interface BudgetConfig {
@@ -41,7 +41,7 @@ const KEYS = {
 } as const;
 
 const PALETTE = [
-  "purple",
+  "green",
   "blue",
   "teal",
   "green",
@@ -70,7 +70,7 @@ function migrateLegacy(): BudgetEntry | null {
         id: "legacy",
         name: "My Budget",
         createdAt: new Date().toISOString(),
-        color: "purple",
+        color: "green",
       },
       config,
       transactions,
@@ -137,12 +137,11 @@ export function useBudgets() {
   const createBudget = useCallback(
     (name: string, config: BudgetConfig): string => {
       const id = genId();
-      const colorIndex = index.length % PALETTE.length;
       const meta: BudgetMeta = {
         id,
         name,
         createdAt: new Date().toISOString(),
-        color: PALETTE[colorIndex],
+        color: "green",
       };
       const entry: BudgetEntry = { meta, config, transactions: [] };
       saveEntry(entry);

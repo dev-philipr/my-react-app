@@ -21,6 +21,7 @@ import {
   Grid,
   GridItem,
   Heading,
+  Icon,
   IconButton,
   Input,
   InputGroup,
@@ -402,7 +403,7 @@ function ConfigPanel({ config, onSave, onCancel }: ConfigPanelProps) {
         )}
         <Button
           size="sm"
-          colorPalette="purple"
+          colorPalette="green"
           borderRadius="lg"
           disabled={!isValid}
           onClick={() => onSave(draft)}
@@ -478,8 +479,8 @@ function TransactionForm({
             ml={2}
             px={2}
             py={0.5}
-            bg="purple.subtle"
-            color="purple.fg"
+            bg="green.subtle"
+            color="green.fg"
             borderRadius="full"
             fontSize="2xs"
             fontWeight="semibold"
@@ -610,7 +611,7 @@ function TransactionForm({
         </Button>
         <Button
           size="sm"
-          colorPalette="purple"
+          colorPalette="green"
           borderRadius="lg"
           disabled={!isValid}
           onClick={handleSave}
@@ -726,7 +727,7 @@ function QuickAddRow({
         </Button>
         <Button
           size="xs"
-          colorPalette="purple"
+          colorPalette="green"
           borderRadius="lg"
           disabled={!isValid}
           onClick={handleSave}
@@ -841,7 +842,9 @@ function TxRow({ tx, onEdit, onDelete }: TxRowProps) {
           borderRadius="lg"
           onClick={() => onDelete(tx.id)}
         >
-          <Trash2 size={13} />
+          <Icon color="red.500">
+            <Trash2 size={13} />
+          </Icon>
         </IconButton>
       </Flex>
     </Flex>
@@ -1068,7 +1071,7 @@ function EventCard({
           <Button
             size="xs"
             variant="ghost"
-            colorPalette="purple"
+            colorPalette="green"
             borderRadius="lg"
             color="fg.subtle"
             fontSize="xs"
@@ -1276,7 +1279,7 @@ export function MethodDrawer() {
                   w={2}
                   h={2}
                   borderRadius="full"
-                  bg="purple.400"
+                  bg="green.400"
                   flexShrink={0}
                 />
                 <Text fontSize="sm" fontWeight="semibold" color="fg">
@@ -1299,7 +1302,7 @@ export function MethodDrawer() {
                       <Text
                         fontSize="xs"
                         fontWeight="semibold"
-                        color="purple.500"
+                        color="green.500"
                         flexShrink={0}
                         mt={0.5}
                         minW="18px"
@@ -1332,7 +1335,7 @@ export function MethodDrawer() {
                           w={1.5}
                           h={1.5}
                           borderRadius="full"
-                          bg="purple.400"
+                          bg="green.400"
                           flexShrink={0}
                         />
                         <Text fontSize="sm" color="fg.muted">
@@ -1354,7 +1357,7 @@ export function MethodDrawer() {
                   <Text
                     fontSize="xs"
                     fontWeight="semibold"
-                    color="purple.500"
+                    color="green.500"
                     letterSpacing="wider"
                     textTransform="uppercase"
                     mb={2}
@@ -1443,7 +1446,7 @@ export default function BudgetDetail({
           <Text fontSize="4xl">🔍</Text>
           <Text color="fg.muted">Budget not found.</Text>
           <Button
-            colorPalette="purple"
+            colorPalette="green"
             borderRadius="xl"
             onClick={() => navigate("/")}
           >
@@ -1513,7 +1516,7 @@ export default function BudgetDetail({
 
             <Flex align="center" gap={2} wrap="wrap">
               <Badge
-                colorPalette="purple"
+                colorPalette="green"
                 variant="subtle"
                 borderRadius="full"
                 px={3}
@@ -1562,7 +1565,7 @@ export default function BudgetDetail({
               <Button
                 size="sm"
                 variant={showConfig ? "solid" : "outline"}
-                colorPalette={showConfig ? "purple" : "gray"}
+                colorPalette={showConfig ? "green" : "gray"}
                 borderRadius="xl"
                 flexShrink={0}
                 mt={1}
@@ -1647,7 +1650,7 @@ export default function BudgetDetail({
                 </Text>
                 <Button
                   size="xs"
-                  colorPalette="purple"
+                  colorPalette="green"
                   variant="subtle"
                   borderRadius="lg"
                   onClick={() => setShowForm((p) => !p)}
