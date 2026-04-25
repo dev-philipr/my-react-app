@@ -203,6 +203,7 @@ function ColorModeToggle() {
 function StatTile({ label, value, isPositive, sub }: StatTileProps) {
   const numColor =
     isPositive === undefined ? "fg" : isPositive ? "green.500" : "red.500";
+  const val = value.toFixed(2);
   return (
     <Box
       bg="bg.subtle"
@@ -217,7 +218,7 @@ function StatTile({ label, value, isPositive, sub }: StatTileProps) {
       transition="all 0.2s"
     >
       <Text
-        fontSize="xs"
+        fontSize="2xs"
         fontWeight="semibold"
         letterSpacing="widest"
         textTransform="uppercase"
@@ -227,13 +228,15 @@ function StatTile({ label, value, isPositive, sub }: StatTileProps) {
         {label}
       </Text>
       <Text
-        fontSize="3xl"
+        fontSize={{
+          base: val.length > 6 ? "md" : "lg",
+        }}
         fontWeight="bold"
         letterSpacing="tight"
         color={numColor}
         lineHeight="1"
       >
-        ${value.toFixed(2)}
+        ${val}
       </Text>
       {sub && (
         <Text fontSize="xs" color="fg.subtle" mt={1.5}>
@@ -375,7 +378,7 @@ function ConfigPanel({ config, onSave, onCancel }: ConfigPanelProps) {
             placeholder="0.00"
             min={0}
             step={0.01}
-            value={draft.budget}
+            value={draft.budget || ""}
             onChange={(e) => set("budget", parseFloat(e.target.value) || 0)}
           />
         </Field.Root>
@@ -397,7 +400,7 @@ function ConfigPanel({ config, onSave, onCancel }: ConfigPanelProps) {
             placeholder="0.00"
             min={0}
             step={0.01}
-            value={draft.dailyBudget}
+            value={draft.dailyBudget || ""}
             onChange={(e) =>
               set("dailyBudget", parseFloat(e.target.value) || 0)
             }
