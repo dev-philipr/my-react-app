@@ -15,6 +15,7 @@ import {
   Separator,
   Stack,
   Input,
+  InputGroup,
   Button,
   IconButton,
   Field,
@@ -38,6 +39,7 @@ import {
   Settings,
   Sun,
   Moon,
+  Zap,
 } from "lucide-react";
 import {
   AccordionRoot,
@@ -53,6 +55,7 @@ interface Transaction {
   credit: number;
   debit: number;
   date: string; // stored as ISO string "yyyy-MM-dd" for localStorage safety
+  name?: string; // optional — legacy records won't have it
 }
 
 interface BudgetConfig {
@@ -77,18 +80,20 @@ interface BudgetBarProps {
 interface ConfigPanelProps {
   config: BudgetConfig;
   onSave: (c: BudgetConfig) => void;
-  onCancel?: () => void; // optional — hidden on first-run
+  onCancel?: () => void;
 }
 
 interface TransactionFormProps {
   initial?: Partial<Transaction>;
   onSave: (tx: Omit<Transaction, "id"> & { id?: string }) => void;
   onCancel: () => void;
+  /** When set, the date field is locked to this value */
+  lockedDate?: string;
 }
 
 interface TxRowProps {
   tx: Transaction;
-  onEdit: (tx: Transaction) => void;
+  onEdit: (tx: Omit<Transaction, "id"> & { id?: string }) => void;
   onDelete: (id: string) => void;
 }
 
@@ -101,9 +106,10 @@ interface EventCardProps {
   transactions: Transaction[];
   onEdit: (tx: Transaction) => void;
   onDelete: (id: string) => void;
+  onQuickSave: (tx: Omit<Transaction, "id"> & { id?: string }) => void;
 }
 
-interface EventRowProps extends EventCardProps {
+interface EventRowProps extends Omit<EventCardProps, "onQuickSave"> {
   isLast: boolean;
 }
 
@@ -148,7 +154,6 @@ function genId(): string {
   return Math.random().toString(36).slice(2, 10);
 }
 
-// Convert stored string date → Date object for useBudget
 function txToDate(tx: Transaction): {
   credit: number;
   debit: number;
@@ -157,7 +162,15 @@ function txToDate(tx: Transaction): {
   return { credit: tx.credit, debit: tx.debit, date: parseISO(tx.date) };
 }
 
-// ─── Empty config seed for first-run ConfigPanel ──────────────────────────────
+/** Returns the display name for a transaction — handles legacy records gracefully */
+function txDisplayName(tx: Transaction): { text: string; isLegacy: boolean } {
+  if (tx.name && tx.name.trim() !== "") {
+    return { text: tx.name.trim(), isLegacy: false };
+  }
+  return { text: "unlabelled", isLegacy: true };
+}
+
+// ─── Empty config seed ────────────────────────────────────────────────────────
 
 const EMPTY_CONFIG: BudgetConfig = {
   rangeFrom: "",
@@ -200,6 +213,8 @@ function ColorModeToggle() {
   );
 }
 
+// ─── StatTile ─────────────────────────────────────────────────────────────────
+
 function StatTile({ label, value, isPositive, sub }: StatTileProps) {
   const numColor =
     isPositive === undefined ? "fg" : isPositive ? "green.500" : "red.500";
@@ -228,9 +243,7 @@ function StatTile({ label, value, isPositive, sub }: StatTileProps) {
         {label}
       </Text>
       <Text
-        fontSize={{
-          base: val.length > 6 ? "md" : "lg",
-        }}
+        fontSize={{ base: val.length > 6 ? "md" : "lg" }}
         fontWeight="bold"
         letterSpacing="tight"
         color={numColor}
@@ -369,18 +382,26 @@ function ConfigPanel({ config, onSave, onCancel }: ConfigPanelProps) {
             textTransform="uppercase"
             letterSpacing="wider"
           >
-            Total Budget ($)
+            Total Budget
           </Field.Label>
-          <Input
-            type="number"
-            size="sm"
-            borderRadius="lg"
-            placeholder="0.00"
-            min={0}
-            step={0.01}
-            value={draft.budget || ""}
-            onChange={(e) => set("budget", parseFloat(e.target.value) || 0)}
-          />
+          <InputGroup
+            startElement={
+              <Text fontSize="xs" color="fg.muted">
+                $
+              </Text>
+            }
+          >
+            <Input
+              type="number"
+              size="sm"
+              borderRadius="lg"
+              placeholder="0.00"
+              min={0}
+              step={0.01}
+              value={draft.budget || ""}
+              onChange={(e) => set("budget", parseFloat(e.target.value) || 0)}
+            />
+          </InputGroup>
         </Field.Root>
 
         <Field.Root>
@@ -391,25 +412,32 @@ function ConfigPanel({ config, onSave, onCancel }: ConfigPanelProps) {
             textTransform="uppercase"
             letterSpacing="wider"
           >
-            Daily Budget ($)
+            Daily Budget
           </Field.Label>
-          <Input
-            type="number"
-            size="sm"
-            borderRadius="lg"
-            placeholder="0.00"
-            min={0}
-            step={0.01}
-            value={draft.dailyBudget || ""}
-            onChange={(e) =>
-              set("dailyBudget", parseFloat(e.target.value) || 0)
+          <InputGroup
+            startElement={
+              <Text fontSize="xs" color="fg.muted">
+                $
+              </Text>
             }
-          />
+          >
+            <Input
+              type="number"
+              size="sm"
+              borderRadius="lg"
+              placeholder="0.00"
+              min={0}
+              step={0.01}
+              value={draft.dailyBudget || ""}
+              onChange={(e) =>
+                set("dailyBudget", parseFloat(e.target.value) || 0)
+              }
+            />
+          </InputGroup>
         </Field.Root>
       </Grid>
 
       <Flex gap={3} justify="flex-end">
-        {/* Only show Cancel when there's an existing config to revert to */}
         {onCancel && (
           <Button
             size="sm"
@@ -438,14 +466,21 @@ function ConfigPanel({ config, onSave, onCancel }: ConfigPanelProps) {
 
 // ─── TransactionForm ──────────────────────────────────────────────────────────
 
-function TransactionForm({ initial, onSave, onCancel }: TransactionFormProps) {
+function TransactionForm({
+  initial,
+  onSave,
+  onCancel,
+  lockedDate,
+}: TransactionFormProps) {
   const dateId = useId();
+  const nameId = useId();
   const creditId = useId();
   const debitId = useId();
 
   const [date, setDate] = useState<string>(
-    initial?.date ?? format(new Date(), "yyyy-MM-dd"),
+    lockedDate ?? initial?.date ?? format(new Date(), "yyyy-MM-dd"),
   );
+  const [name, setName] = useState<string>(initial?.name ?? "");
   const [credit, setCredit] = useState<string>(
     initial?.credit != null && initial.credit > 0 ? String(initial.credit) : "",
   );
@@ -464,6 +499,7 @@ function TransactionForm({ initial, onSave, onCancel }: TransactionFormProps) {
     onSave({
       ...(initial?.id ? { id: initial.id } : {}),
       date,
+      name: name.trim() || undefined,
       credit: parseFloat(credit || "0"),
       debit: parseFloat(debit || "0"),
     });
@@ -486,10 +522,52 @@ function TransactionForm({ initial, onSave, onCancel }: TransactionFormProps) {
         mb={4}
       >
         {initial?.id ? "Edit Transaction" : "New Transaction"}
+        {lockedDate && (
+          <Box
+            as="span"
+            ml={2}
+            px={2}
+            py={0.5}
+            bg="purple.subtle"
+            color="purple.fg"
+            borderRadius="full"
+            fontSize="2xs"
+            fontWeight="semibold"
+            letterSpacing="wider"
+          >
+            {format(parseISO(lockedDate), "MMM d")}
+          </Box>
+        )}
       </Text>
 
-      <Grid templateColumns={{ base: "1fr", sm: "1fr 1fr 1fr" }} gap={4} mb={5}>
-        <Field.Root id={dateId}>
+      {/* Row 1: date (hidden/locked) + name */}
+      <Grid
+        templateColumns={{ base: "1fr", sm: lockedDate ? "1fr" : "auto 1fr" }}
+        gap={4}
+        mb={4}
+      >
+        {!lockedDate && (
+          <Field.Root id={dateId}>
+            <Field.Label
+              fontSize="xs"
+              color="fg.muted"
+              fontWeight="semibold"
+              textTransform="uppercase"
+              letterSpacing="wider"
+            >
+              Date
+            </Field.Label>
+            <Input
+              type="date"
+              size="sm"
+              borderRadius="lg"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+            />
+          </Field.Root>
+        )}
+
+        <Field.Root id={nameId}>
           <Field.Label
             fontSize="xs"
             color="fg.muted"
@@ -497,17 +575,30 @@ function TransactionForm({ initial, onSave, onCancel }: TransactionFormProps) {
             textTransform="uppercase"
             letterSpacing="wider"
           >
-            Date
+            Label{" "}
+            <Box
+              as="span"
+              color="fg.subtle"
+              fontWeight="normal"
+              textTransform="none"
+              letterSpacing="normal"
+              ml={1}
+            >
+              (optional)
+            </Box>
           </Field.Label>
           <Input
-            type="date"
             size="sm"
             borderRadius="lg"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
+            placeholder="e.g. Groceries, Coffee, Salary…"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
           />
         </Field.Root>
+      </Grid>
 
+      {/* Row 2: credit + debit */}
+      <Grid templateColumns={{ base: "1fr 1fr" }} gap={4} mb={5}>
         <Field.Root id={creditId}>
           <Field.Label
             fontSize="xs"
@@ -516,18 +607,26 @@ function TransactionForm({ initial, onSave, onCancel }: TransactionFormProps) {
             textTransform="uppercase"
             letterSpacing="wider"
           >
-            Credit ($)
+            Credit
           </Field.Label>
-          <Input
-            type="number"
-            size="sm"
-            borderRadius="lg"
-            placeholder="0.00"
-            min={0}
-            step={0.01}
-            value={credit}
-            onChange={(e) => setCredit(e.target.value)}
-          />
+          <InputGroup
+            startElement={
+              <Text fontSize="xs" color="fg.muted">
+                $
+              </Text>
+            }
+          >
+            <Input
+              type="number"
+              size="sm"
+              borderRadius="lg"
+              placeholder="0.00"
+              min={0}
+              step={0.01}
+              value={credit}
+              onChange={(e) => setCredit(e.target.value)}
+            />
+          </InputGroup>
         </Field.Root>
 
         <Field.Root id={debitId}>
@@ -538,18 +637,26 @@ function TransactionForm({ initial, onSave, onCancel }: TransactionFormProps) {
             textTransform="uppercase"
             letterSpacing="wider"
           >
-            Debit ($)
+            Debit
           </Field.Label>
-          <Input
-            type="number"
-            size="sm"
-            borderRadius="lg"
-            placeholder="0.00"
-            min={0}
-            step={0.01}
-            value={debit}
-            onChange={(e) => setDebit(e.target.value)}
-          />
+          <InputGroup
+            startElement={
+              <Text fontSize="xs" color="fg.muted">
+                $
+              </Text>
+            }
+          >
+            <Input
+              type="number"
+              size="sm"
+              borderRadius="lg"
+              placeholder="0.00"
+              min={0}
+              step={0.01}
+              value={debit}
+              onChange={(e) => setDebit(e.target.value)}
+            />
+          </InputGroup>
         </Field.Root>
       </Grid>
 
@@ -573,9 +680,155 @@ function TransactionForm({ initial, onSave, onCancel }: TransactionFormProps) {
   );
 }
 
+// ─── QuickAddRow — compact inline form for mobile EventCard ──────────────────
+
+interface QuickAddRowProps {
+  date: string;
+  initial?: Transaction;
+  saveLabel?: string;
+  onSave: (tx: Omit<Transaction, "id"> & { id?: string }) => void;
+  onCancel: () => void;
+}
+
+function QuickAddRow({
+  date,
+  initial,
+  saveLabel = "Add",
+  onSave,
+  onCancel,
+}: QuickAddRowProps) {
+  const [name, setName] = useState(initial?.name ?? "");
+  const [amount, setAmount] = useState(
+    initial
+      ? String((initial.debit > 0 ? initial.debit : initial.credit) || "")
+      : "",
+  );
+  const [type, setType] = useState<"debit" | "credit">(
+    initial ? (initial.credit > 0 ? "credit" : "debit") : "debit",
+  );
+
+  const isValid = amount.trim() !== "" && parseFloat(amount) > 0;
+
+  function handleSave() {
+    if (!isValid) return;
+    const val = parseFloat(amount);
+    onSave({
+      ...(initial?.id ? { id: initial.id } : {}),
+      date,
+      name: name.trim() || undefined,
+      credit: type === "credit" ? val : 0,
+      debit: type === "debit" ? val : 0,
+    });
+    setName("");
+    setAmount("");
+  }
+
+  return (
+    <Box
+      px={4}
+      py={3}
+      borderTopWidth="1px"
+      borderColor="border.subtle"
+      bg="bg.canvas"
+    >
+      {/* type toggle */}
+      <Flex gap={1.5} mb={3}>
+        <Button
+          size="xs"
+          variant={type === "debit" ? "solid" : "outline"}
+          colorPalette={type === "debit" ? "red" : "gray"}
+          borderRadius="full"
+          flex="1"
+          onClick={() => setType("debit")}
+        >
+          − Expense
+        </Button>
+        <Button
+          size="xs"
+          variant={type === "credit" ? "solid" : "outline"}
+          colorPalette={type === "credit" ? "green" : "gray"}
+          borderRadius="full"
+          flex="1"
+          onClick={() => setType("credit")}
+        >
+          + Income
+        </Button>
+      </Flex>
+
+      <Flex gap={2} mb={2}>
+        <Input
+          size="sm"
+          borderRadius="lg"
+          placeholder="Label (optional)"
+          value={name}
+          flex="1"
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && handleSave()}
+        />
+        <InputGroup
+          startElement={
+            <Text fontSize="xs" color="fg.muted">
+              $
+            </Text>
+          }
+          w="28"
+          flexShrink={0}
+        >
+          <Input
+            size="sm"
+            borderRadius="lg"
+            placeholder="0.00"
+            type="number"
+            min={0}
+            step={0.01}
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleSave()}
+          />
+        </InputGroup>
+      </Flex>
+
+      <Flex gap={2} justify="flex-end">
+        <Button size="xs" variant="ghost" borderRadius="lg" onClick={onCancel}>
+          <X size={12} />
+          Cancel
+        </Button>
+        <Button
+          size="xs"
+          colorPalette="purple"
+          borderRadius="lg"
+          disabled={!isValid}
+          onClick={handleSave}
+        >
+          <Check size={12} />
+          {saveLabel}
+        </Button>
+      </Flex>
+    </Box>
+  );
+}
+
 // ─── TxRow ────────────────────────────────────────────────────────────────────
 
 function TxRow({ tx, onEdit, onDelete }: TxRowProps) {
+  const { text: nameText, isLegacy } = txDisplayName(tx);
+  const [editing, setEditing] = useState(false);
+
+  if (editing) {
+    return (
+      <QuickAddRow
+        date={tx.date}
+        initial={tx}
+        saveLabel="Save"
+        onSave={(updated) => {
+          onEdit(updated as Transaction);
+          setEditing(false);
+        }}
+        onCancel={() => setEditing(false)}
+      />
+    );
+  }
+
   return (
     <Flex
       align="center"
@@ -595,14 +848,29 @@ function TxRow({ tx, onEdit, onDelete }: TxRowProps) {
           bg={tx.credit > 0 ? "green.400" : "red.400"}
           flexShrink={0}
         />
+
+        {/* Name — with legacy fallback styling */}
+        <Text
+          fontSize="sm"
+          fontWeight={isLegacy ? "normal" : "medium"}
+          color={isLegacy ? "fg.subtle" : "fg"}
+          fontStyle={isLegacy ? "italic" : "normal"}
+          truncate
+          flex="1"
+          minW={0}
+        >
+          {nameText}
+        </Text>
+
         <Text
           fontSize="xs"
           color="fg.muted"
           fontVariantNumeric="tabular-nums"
           flexShrink={0}
         >
-          {format(new UTCDate(tx.date), "MMM dd, yyyy")}
+          {format(new UTCDate(tx.date), "MMM dd")}
         </Text>
+
         {tx.credit > 0 && (
           <Badge
             colorPalette="green"
@@ -610,6 +878,7 @@ function TxRow({ tx, onEdit, onDelete }: TxRowProps) {
             borderRadius="full"
             fontSize="xs"
             px={2}
+            flexShrink={0}
           >
             +${tx.credit.toFixed(2)}
           </Badge>
@@ -621,6 +890,7 @@ function TxRow({ tx, onEdit, onDelete }: TxRowProps) {
             borderRadius="full"
             fontSize="xs"
             px={2}
+            flexShrink={0}
           >
             −${tx.debit.toFixed(2)}
           </Badge>
@@ -632,7 +902,7 @@ function TxRow({ tx, onEdit, onDelete }: TxRowProps) {
           size="xs"
           variant="ghost"
           borderRadius="lg"
-          onClick={() => onEdit(tx)}
+          onClick={() => setEditing(true)}
         >
           <Pencil size={13} />
         </IconButton>
@@ -662,9 +932,12 @@ function EventCard({
   transactions,
   onEdit,
   onDelete,
+  onQuickSave,
 }: EventCardProps) {
   const isUp = endBalance >= 0;
   const hasTransactions = transactions.length > 0;
+  const dateStr = format(date, "yyyy-MM-dd");
+  const [quickAdd, setQuickAdd] = useState(false);
 
   return (
     <Box
@@ -732,7 +1005,7 @@ function EventCard({
             </Flex>
           </AccordionItemTrigger>
 
-          {/* 2×2 stats — always visible, lives outside the collapsible content */}
+          {/* 2×2 stats — always visible */}
           <Grid templateColumns="1fr 1fr">
             <Box
               px={5}
@@ -848,6 +1121,42 @@ function EventCard({
           </AccordionItemContent>
         </AccordionItem>
       </AccordionRoot>
+
+      <Separator />
+
+      {/* ── Quick-add section ── */}
+      {quickAdd ? (
+        <QuickAddRow
+          date={dateStr}
+          onSave={(tx) => {
+            onQuickSave(tx);
+            setQuickAdd(false);
+          }}
+          onCancel={() => setQuickAdd(false)}
+        />
+      ) : (
+        <Flex
+          px={4}
+          py={2.5}
+          borderTopWidth="1px"
+          borderColor="border.subtle"
+          justify="flex-end"
+          bg="bg.canvas"
+        >
+          <Button
+            size="xs"
+            variant="ghost"
+            colorPalette="purple"
+            borderRadius="lg"
+            color="fg.subtle"
+            fontSize="xs"
+            onClick={() => setQuickAdd(true)}
+          >
+            <Zap size={11} />
+            Quick add
+          </Button>
+        </Flex>
+      )}
     </Box>
   );
 }
@@ -872,7 +1181,6 @@ function EventRow({
 
   return (
     <>
-      {/* Col 1 — Date */}
       <GridItem
         px={5}
         py={3.5}
@@ -893,14 +1201,12 @@ function EventRow({
         </Flex>
       </GridItem>
 
-      {/* Col 2 — Start */}
       <GridItem alignSelf="center" py={3.5}>
         <Text fontSize="sm" color="fg.muted" fontVariantNumeric="tabular-nums">
           ${startBalance.toFixed(2)}
         </Text>
       </GridItem>
 
-      {/* Col 3 — Expenses */}
       <GridItem alignSelf="center" py={3.5}>
         <Text
           fontSize="sm"
@@ -911,7 +1217,6 @@ function EventRow({
         </Text>
       </GridItem>
 
-      {/* Col 4 — Income */}
       <GridItem alignSelf="center" py={3.5}>
         <Text
           fontSize="sm"
@@ -922,7 +1227,6 @@ function EventRow({
         </Text>
       </GridItem>
 
-      {/* Col 5 — Balance + delta badge */}
       <GridItem alignSelf="center" py={3.5}>
         <Flex align="center" gap={2}>
           <Text
@@ -936,7 +1240,6 @@ function EventRow({
         </Flex>
       </GridItem>
 
-      {/* Col 6 — Transactions expand toggle */}
       <GridItem alignSelf="center" py={3.5} pr={5}>
         <Flex gap="2" alignItems="center">
           <Badge
@@ -966,7 +1269,6 @@ function EventRow({
         </Flex>
       </GridItem>
 
-      {/* Expanded transactions — span all 6 columns */}
       {open && hasTransactions && (
         <GridItem colSpan={6} px={5} pb={2}>
           <Box
@@ -983,7 +1285,6 @@ function EventRow({
         </GridItem>
       )}
 
-      {/* Separator — span all 6 columns */}
       {!isLast && (
         <GridItem colSpan={6}>
           <Separator opacity={0.06} />
@@ -1008,21 +1309,17 @@ const TABLE_HEADERS = [
 // ─── App ──────────────────────────────────────────────────────────────────────
 
 export default function App() {
-  // ── Persisted state ──────────────────────────────────────────────────────────
   const [config, setConfig] = useState<BudgetConfig | null>(loadConfig);
   const [transactions, setTransactions] =
     useState<Transaction[]>(loadTransactions);
 
-  // Persist on every change
   useEffect(() => {
     if (config) saveConfig(config);
   }, [config]);
-
   useEffect(() => {
     saveTransactions(transactions);
   }, [transactions]);
 
-  // ── Handlers (declared before early return so they're stable references) ─────
   const handleSaveConfig = useCallback((c: BudgetConfig) => {
     setConfig(c);
     setShowConfig(false);
@@ -1039,7 +1336,6 @@ export default function App() {
         return updated;
       });
       setShowForm(false);
-      setEditingTx(null);
     },
     [],
   );
@@ -1048,22 +1344,14 @@ export default function App() {
     setTransactions((prev) => prev.filter((tx) => tx.id !== id));
   }, []);
 
-  const handleEdit = useCallback((tx: Transaction) => {
-    setEditingTx(tx);
-    setShowForm(false);
-  }, []);
-
   const handleCancelForm = useCallback(() => {
     setShowForm(false);
-    setEditingTx(null);
   }, []);
 
-  // ── UI state ─────────────────────────────────────────────────────────────────
   const [showConfig, setShowConfig] = useState(false);
   const [showForm, setShowForm] = useState(false);
-  const [editingTx, setEditingTx] = useState<Transaction | null>(null);
 
-  // ── First-run gate — no config yet ───────────────────────────────────────────
+  // ── First-run gate ───────────────────────────────────────────────────────────
   if (!config) {
     return (
       <Provider defaultTheme="light">
@@ -1103,13 +1391,10 @@ export default function App() {
     );
   }
 
-  // ── useBudget — only runs once config is non-null ────────────────────────────
+  // ── useBudget ────────────────────────────────────────────────────────────────
   const budgetInput = {
     config: {
-      range: {
-        from: parseISO(config.rangeFrom),
-        to: parseISO(config.rangeTo),
-      },
+      range: { from: parseISO(config.rangeFrom), to: parseISO(config.rangeTo) },
       budget: config.budget,
       dailyBudget: config.dailyBudget,
     },
@@ -1125,7 +1410,6 @@ export default function App() {
     totalSpent,
   } = useBudget(budgetInput);
 
-  // ── Enrich events with their source transactions ───────────────────────────
   const enrichedEvents = events.map((ev) => ({
     ...ev,
     transactions: transactions.filter(
@@ -1133,7 +1417,6 @@ export default function App() {
     ),
   }));
 
-  // ── Render ───────────────────────────────────────────────────────────────────
   return (
     <Provider defaultTheme="light">
       <Box minH="100vh" bg="bg" pt={4} pb={20}>
@@ -1166,7 +1449,6 @@ export default function App() {
                     {events.length} days
                   </Badge>
                 </Box>
-
                 <Flex align="end" gap={0}>
                   <Box alignSelf="end" lineHeight="2">
                     <MethodDrawer />
@@ -1188,7 +1470,6 @@ export default function App() {
                     overview
                   </Box>
                 </Heading>
-
                 <Button
                   size="sm"
                   variant={showConfig ? "solid" : "outline"}
@@ -1281,10 +1562,7 @@ export default function App() {
                     colorPalette="purple"
                     variant="subtle"
                     borderRadius="lg"
-                    onClick={() => {
-                      setShowForm((p) => !p);
-                      setEditingTx(null);
-                    }}
+                    onClick={() => setShowForm((p) => !p)}
                   >
                     {showForm ? <X size={12} /> : <Plus size={12} />}
                     {showForm ? "Cancel" : "Add"}
@@ -1292,18 +1570,9 @@ export default function App() {
                 </Flex>
               </Flex>
 
-              {/* Add form */}
+              {/* Generic add form */}
               {showForm && (
                 <TransactionForm
-                  onSave={handleSaveTx}
-                  onCancel={handleCancelForm}
-                />
-              )}
-
-              {/* Edit form */}
-              {editingTx && (
-                <TransactionForm
-                  initial={editingTx}
                   onSave={handleSaveTx}
                   onCancel={handleCancelForm}
                 />
@@ -1336,8 +1605,9 @@ export default function App() {
                       <EventCard
                         key={idx}
                         {...ev}
-                        onEdit={handleEdit}
+                        onEdit={handleSaveTx}
                         onDelete={handleDelete}
+                        onQuickSave={handleSaveTx}
                       />
                     ))}
                   </Stack>
@@ -1352,7 +1622,6 @@ export default function App() {
                     overflow="hidden"
                   >
                     <Grid templateColumns={TABLE_COLUMNS}>
-                      {/* ── Header row ── */}
                       {TABLE_HEADERS.map((h, i) => (
                         <GridItem
                           key={h}
@@ -1375,18 +1644,16 @@ export default function App() {
                         </GridItem>
                       ))}
 
-                      {/* ── Data rows ── */}
                       {enrichedEvents.map((ev, idx) => (
                         <EventRow
                           key={idx}
                           {...ev}
                           isLast={idx === enrichedEvents.length - 1}
-                          onEdit={handleEdit}
+                          onEdit={handleSaveTx}
                           onDelete={handleDelete}
                         />
                       ))}
 
-                      {/* ── Footer row ── */}
                       <GridItem
                         colSpan={6}
                         px={5}
@@ -1498,17 +1765,13 @@ function MethodDrawer() {
 
             <DrawerBody py={5}>
               <Stack gap={6}>
-                {/* Tagline */}
                 <Text fontSize="sm" color="fg.muted" lineHeight="tall">
                   This tracker converts your total budget into a daily
                   allowance. Unspent balance carries forward — frugal days build
                   a cushion for bigger ones. One glance at the burn bar tells
                   you whether today is a spend day or a save day.
                 </Text>
-
                 <Separator />
-
-                {/* Steps */}
                 <Stack gap={4}>
                   <SectionLabel>How it works</SectionLabel>
                   {METHOD_STEPS.map(({ n, title, desc }) => (
@@ -1539,10 +1802,7 @@ function MethodDrawer() {
                     </Flex>
                   ))}
                 </Stack>
-
                 <Separator />
-
-                {/* Use cases */}
                 <Stack gap={3}>
                   <SectionLabel>When to use it</SectionLabel>
                   <Stack gap={2}>
@@ -1562,10 +1822,7 @@ function MethodDrawer() {
                     ))}
                   </Stack>
                 </Stack>
-
                 <Separator />
-
-                {/* Why it works callout */}
                 <Box
                   bg="bg.subtle"
                   borderWidth="1px"
