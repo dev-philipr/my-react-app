@@ -29,6 +29,7 @@ import {
   Separator,
   Stack,
   Text,
+  VStack,
 } from "@chakra-ui/react";
 import { UTCDate } from "@date-fns/utc";
 import { format, parseISO } from "date-fns";
@@ -56,6 +57,7 @@ import { useBudget } from "./hooks/use-budget";
 import type {
   BudgetConfig,
   BudgetEntry,
+  BudgetMeta,
   Transaction,
 } from "./hooks/use-budgets";
 
@@ -118,6 +120,10 @@ interface QuickAddRowProps {
 
 interface BudgetDetailProps {
   getBudgetEntry: (id: string) => BudgetEntry | null;
+  updateBudgetMeta: (
+    id: string,
+    patch: Partial<Pick<BudgetMeta, "name" | "color">>,
+  ) => void;
   updateBudgetConfig: (id: string, config: BudgetConfig) => void;
   upsertTransaction: (
     budgetId: string,
@@ -1385,6 +1391,7 @@ export function MethodDrawer() {
 
 export default function BudgetDetail({
   getBudgetEntry,
+  updateBudgetMeta,
   updateBudgetConfig,
   upsertTransaction,
   deleteTransaction,
@@ -1403,6 +1410,24 @@ export default function BudgetDetail({
 
   const [showConfig, setShowConfig] = useState(false);
   const [showForm, setShowForm] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [draftName, setDraftName] = useState("");
+
+  const handleStartEditName = useCallback(() => {
+    setDraftName(entry?.meta.name ?? "");
+    setEditingName(true);
+  }, [entry?.meta.name]);
+
+  const handleSaveName = useCallback(() => {
+    if (!id || !draftName.trim()) return;
+    updateBudgetMeta(id, { name: draftName.trim() });
+    setEditingName(false);
+    bump();
+  }, [id, draftName, updateBudgetMeta, bump]);
+
+  const handleCancelEditName = useCallback(() => {
+    setEditingName(false);
+  }, []);
 
   const handleSaveConfig = useCallback(
     (c: BudgetConfig) => {
@@ -1492,127 +1517,187 @@ export default function BudgetDetail({
     <Box minH="100vh" bg="bg" pt={4} pb={20}>
       <Container maxW="900px">
         <Stack gap={10}>
-          {/* ── Breadcrumb + Header ── */}
-          <Stack gap={3}>
-            <Flex align="center" gap={2} wrap="wrap">
-              <Button
-                size="xs"
-                variant="ghost"
-                borderRadius="lg"
-                color="fg.muted"
-                onClick={() => navigate("/")}
-                px={2}
-              >
-                <ArrowLeft size={13} />
-                All budgets
-              </Button>
-              <ChevronRight size={12} color="var(--chakra-colors-fg-subtle)" />
-              <Flex align="center" gap={1.5}>
-                <Text fontSize="xs" color="fg.subtle" fontWeight="medium">
-                  {entry.meta.name}
-                </Text>
+          <Flex flexDir="column" gap={2}>
+            {/* ── Breadcrumb + Header ── */}
+            <Stack gap={3}>
+              <Flex align="center" gap={2} wrap="wrap">
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  borderRadius="lg"
+                  color="fg.muted"
+                  onClick={() => navigate("/")}
+                  px={2}
+                >
+                  <ArrowLeft size={13} />
+                  All budgets
+                </Button>
+                <ChevronRight
+                  size={12}
+                  color="var(--chakra-colors-fg-subtle)"
+                />
+                <Flex align="center" gap={1.5}>
+                  <Text fontSize="xs" color="fg.subtle" fontWeight="medium">
+                    {entry.meta.name}
+                  </Text>
+                </Flex>
               </Flex>
-            </Flex>
 
-            <Flex align="center" gap={2} wrap="wrap">
-              <Badge
-                colorPalette="green"
-                variant="subtle"
-                borderRadius="full"
-                px={3}
-                py={1}
-                fontSize="xs"
-                letterSpacing="wide"
-              >
-                {format(parseISO(config.rangeFrom), "MMM d")} –{" "}
-                {format(parseISO(config.rangeTo), "MMM d, yyyy")}
-              </Badge>
-              <Box flex="1">
+              <Flex align="center" gap={2} wrap="wrap">
                 <Badge
-                  colorPalette="gray"
-                  variant="outline"
+                  colorPalette="green"
+                  variant="subtle"
                   borderRadius="full"
                   px={3}
                   py={1}
                   fontSize="xs"
+                  letterSpacing="wide"
                 >
-                  {events.length} days
+                  {format(parseISO(config.rangeFrom), "MMM d")} –{" "}
+                  {format(parseISO(config.rangeTo), "MMM d, yyyy")}
                 </Badge>
-              </Box>
-              <Flex align="end" gap={0}>
-                <Box alignSelf="end" lineHeight="2">
-                  <MethodDrawer />
+                <Box flex="1">
+                  <Badge
+                    colorPalette="gray"
+                    variant="outline"
+                    borderRadius="full"
+                    px={3}
+                    py={1}
+                    fontSize="xs"
+                  >
+                    {events.length} days
+                  </Badge>
                 </Box>
-                <ColorModeToggle />
-              </Flex>
-            </Flex>
-
-            <Flex justify="space-between" align="flex-start" gap={4}>
-              <Flex align="center" gap={3}>
-                <Heading
-                  size="4xl"
-                  fontWeight="black"
-                  letterSpacing="-0.04em"
-                  color="fg"
-                  lineHeight="1"
-                >
-                  {entry.meta.name}{" "}
-                  <Box as="span" color="fg.muted" fontWeight="light">
-                    overview
+                <Flex align="end" gap={0}>
+                  <Box alignSelf="end" lineHeight="2">
+                    <MethodDrawer />
                   </Box>
-                </Heading>
+                  <ColorModeToggle />
+                </Flex>
               </Flex>
-              <Button
-                size="sm"
-                variant={showConfig ? "solid" : "outline"}
-                colorPalette={showConfig ? "green" : "gray"}
-                borderRadius="xl"
-                flexShrink={0}
-                mt={1}
-                onClick={() => setShowConfig((p) => !p)}
-              >
-                {showConfig ? <X size={14} /> : <Settings size={14} />}
-                {showConfig ? "Close" : "Configure"}
-              </Button>
-            </Flex>
-          </Stack>
 
-          {showConfig && (
-            <ConfigPanel
-              config={config}
-              onSave={handleSaveConfig}
-              onCancel={() => setShowConfig(false)}
-            />
-          )}
+              <Flex justify="space-between" align="flex-start" gap={4}>
+                <Box flex="1" minW={0}>
+                  {editingName ? (
+                    <Flex align="center" gap={2} wrap="wrap">
+                      <Input
+                        autoFocus
+                        size="md"
+                        borderRadius="lg"
+                        value={draftName}
+                        onChange={(e) => setDraftName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") handleSaveName();
+                          if (e.key === "Escape") handleCancelEditName();
+                        }}
+                        fontWeight="black"
+                        letterSpacing="-0.04em"
+                        fontSize="2xl"
+                        maxW="400px"
+                      />
+                      <IconButton
+                        aria-label="Save name"
+                        size={{ base: "xs", md: "sm" }}
+                        colorPalette="green"
+                        borderRadius="lg"
+                        disabled={!draftName.trim()}
+                        onClick={handleSaveName}
+                      >
+                        <Check size={14} />
+                      </IconButton>
+                      <IconButton
+                        aria-label="Cancel"
+                        size="sm"
+                        variant="ghost"
+                        borderRadius="lg"
+                        onClick={handleCancelEditName}
+                      >
+                        <X size={14} />
+                      </IconButton>
+                    </Flex>
+                  ) : (
+                    <Flex align="center" gap={2} wrap="wrap">
+                      <Heading
+                        size={{ base: "lg", md: "2xl" }}
+                        fontWeight="black"
+                        letterSpacing="-0.04em"
+                        color="fg"
+                        lineHeight="1"
+                      >
+                        {entry.meta.name}{" "}
+                        <Box as="span" color="fg.muted" fontWeight="light">
+                          overview
+                        </Box>
+                      </Heading>
+                      <IconButton
+                        aria-label="Edit budget name"
+                        size="xs"
+                        variant="ghost"
+                        borderRadius="lg"
+                        color="fg.subtle"
+                        onClick={handleStartEditName}
+                        alignSelf="flex-end"
+                        mb={1}
+                      >
+                        <Pencil size={13} />
+                      </IconButton>
+                    </Flex>
+                  )}
+                </Box>
+              </Flex>
+            </Stack>
 
-          {/* ── Stat Cards ── */}
-          <Flex gap={4} wrap="wrap">
-            <StatTile
-              label="Total Budget"
-              value={budget}
-              sub="period allocation"
-            />
-            <StatTile
-              label="Daily Budget"
-              value={dailyBudget}
-              sub="per day limit"
-            />
-            <StatTile
-              label="Total Balance"
-              value={totalBalance}
-              isPositive={totalBalance >= 0}
-              sub={
-                budget > 0
-                  ? `${((totalBalance / budget) * 100).toFixed(1)}% of budget left`
-                  : undefined
-              }
-            />
-            <StatTile
-              label="Today's Balance"
-              value={balanceToday}
-              isPositive={balanceToday >= 0}
-              sub="vs daily limit"
-            />
+            {showConfig && (
+              <ConfigPanel
+                config={config}
+                onSave={handleSaveConfig}
+                onCancel={() => setShowConfig(false)}
+              />
+            )}
+
+            <VStack gap="1">
+              <Flex alignSelf="flex-end">
+                <Button
+                  size="sm"
+                  variant={showConfig ? "solid" : "plain"}
+                  colorPalette={showConfig ? "green" : "gray"}
+                  borderRadius="xl"
+                  onClick={() => setShowConfig((p) => !p)}
+                >
+                  {showConfig ? <X size={14} /> : <Settings size={14} />}
+                  {showConfig ? "Close" : "Configure"}
+                </Button>
+              </Flex>
+              {/* ── Stat Cards ── */}
+              <Flex gap={4} wrap="wrap">
+                <StatTile
+                  label="Total Budget"
+                  value={budget}
+                  sub="period allocation"
+                />
+                <StatTile
+                  label="Daily Budget"
+                  value={dailyBudget}
+                  sub="per day limit"
+                />
+                <StatTile
+                  label="Total Balance"
+                  value={totalBalance}
+                  isPositive={totalBalance >= 0}
+                  sub={
+                    budget > 0
+                      ? `${((totalBalance / budget) * 100).toFixed(1)}% of budget left`
+                      : undefined
+                  }
+                />
+                <StatTile
+                  label="Today's Balance"
+                  value={balanceToday}
+                  isPositive={balanceToday >= 0}
+                  sub="vs daily limit"
+                />
+              </Flex>
+            </VStack>
           </Flex>
 
           {/* ── Budget Burn ── */}

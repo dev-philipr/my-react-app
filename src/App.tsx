@@ -10,6 +10,7 @@ function AppRoutes() {
     createBudget,
     deleteBudget,
     getBudgetEntry,
+    updateBudgetMeta,
     updateBudgetConfig,
     upsertTransaction,
     deleteTransaction,
@@ -35,6 +36,7 @@ function AppRoutes() {
         element={
           <BudgetDetail
             getBudgetEntry={getBudgetEntry}
+            updateBudgetMeta={updateBudgetMeta}
             updateBudgetConfig={updateBudgetConfig}
             upsertTransaction={upsertTransaction}
             deleteTransaction={deleteTransaction}

@@ -736,11 +736,6 @@ export default function BudgetList({
     }
   }).length;
 
-  const totalTracked = index.reduce((a, m) => {
-    const e = getBudgetEntry(m.id);
-    return a + (e?.config.budget ?? 0);
-  }, 0);
-
   function handleCreate(name: string, config: BudgetConfig) {
     const id = createBudget(name, config);
     setShowCreate(false);
@@ -806,11 +801,6 @@ export default function BudgetList({
                     label: "Active now",
                     value: String(activeBudgets),
                     sub: "in progress",
-                  },
-                  {
-                    label: "Total tracked",
-                    value: `$${totalTracked.toLocaleString()}`,
-                    sub: "across all budgets",
                   },
                 ].map(({ label, value, sub }) => (
                   <Box
