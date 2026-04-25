@@ -1,92 +1,72 @@
 import { UTCDate } from "@date-fns/utc";
 import { eachDayOfInterval, format, isSameDay } from "date-fns";
 
-interface UseBudgetProps {
+interface BudgetInput {
   config: {
-    range: {
-      from: Date;
-      to: Date;
-    };
+    range: { from: Date; to: Date };
     budget: number;
     dailyBudget: number;
   };
-  transactions: {
-    credit: number; // income
-    debit: number; // expenses
+  transactions: Array<{
+    credit: number;
+    debit: number;
     date: Date;
-  }[];
+  }>;
 }
 
-export const useBudget = ({ config, transactions }: UseBudgetProps) => {
-  const today = new Date();
-  const datesInRange = eachDayOfInterval({
-    start: config.range.from,
-    end: config.range.to,
-  });
-
-  const expenses = transactions.reduce(
-    (acc, { debit, date }) => {
-      const formattedDate = format(new UTCDate(date), "yyyy-MM-dd");
-
-      if (!acc[formattedDate]) {
-        acc[formattedDate] = 0;
-      }
-
-      acc[formattedDate] += debit;
+function groupByDate(
+  entries: Array<{ amount: number; date: Date }>,
+): Record<string, number> {
+  return entries.reduce(
+    (acc, { amount, date }) => {
+      const key = format(new UTCDate(date), "yyyy-MM-dd");
+      acc[key] = (acc[key] ?? 0) + amount;
       return acc;
     },
     {} as Record<string, number>,
   );
+}
 
-  const totalExpenses = Object.values(expenses).reduce(
-    (acc, exp) => (acc += exp),
+export function useBudget({ config, transactions }: BudgetInput) {
+  const today = new Date();
+
+  const expensesByDate = groupByDate(
+    transactions.map((t) => ({ amount: t.debit, date: t.date })),
+  );
+  const incomeByDate = groupByDate(
+    transactions.map((t) => ({ amount: t.credit, date: t.date })),
+  );
+
+  const totalExpenses = Object.values(expensesByDate).reduce(
+    (sum, n) => sum + n,
     0,
   );
-
-  const income = transactions.reduce(
-    (acc, { credit, date }) => {
-      const formattedDate = format(new UTCDate(date), "yyyy-MM-dd");
-
-      if (!acc[formattedDate]) {
-        acc[formattedDate] = 0;
-      }
-
-      acc[formattedDate] += credit;
-      return acc;
-    },
-    {} as Record<string, number>,
-  );
-
-  const totalIncome = Object.values(income).reduce(
-    (acc, exp) => (acc += exp),
+  const totalIncome = Object.values(incomeByDate).reduce(
+    (sum, n) => sum + n,
     0,
   );
 
   const totalBalance = config.budget - totalExpenses + totalIncome;
+  const totalSpent = totalExpenses - totalIncome;
 
-  let accumulator = 0;
-  const events = datesInRange.map((date) => {
-    const formattedDate = format(new UTCDate(date), "yyyy-MM-dd");
-    const exp = expenses[formattedDate] || 0;
-    const inc = income[formattedDate] || 0;
+  let runningBalance = 0;
+  const events = eachDayOfInterval({
+    start: config.range.from,
+    end: config.range.to,
+  }).map((date) => {
+    const key = format(new UTCDate(date), "yyyy-MM-dd");
+    const expenses = expensesByDate[key] ?? 0;
+    const income = incomeByDate[key] ?? 0;
 
-    const startBalance = config.dailyBudget + accumulator;
-    const endBalance = startBalance - exp + inc;
-    accumulator = endBalance;
+    const startBalance = config.dailyBudget + runningBalance;
+    const endBalance = startBalance - expenses + income;
+    runningBalance = endBalance;
 
-    return {
-      date,
-      expenses: exp,
-      income: inc,
-      startBalance,
-      endBalance,
-    };
+    return { date, expenses, income, startBalance, endBalance };
   });
 
   const balanceToday =
-    events.find(({ date }) => isSameDay(today, date))?.endBalance || 0;
-
-  const totalSpent = config.budget - totalBalance;
+    events.find(({ date }) => isSameDay(today, date))?.endBalance ?? 0;
 
   return {
     budget: config.budget,
@@ -96,4 +76,4 @@ export const useBudget = ({ config, transactions }: UseBudgetProps) => {
     balanceToday,
     totalSpent,
   };
-};
+}

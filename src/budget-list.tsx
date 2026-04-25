@@ -43,7 +43,6 @@ interface BudgetListProps {
   getBudgetEntry: (id: string) => BudgetEntry | null;
   createBudget: (name: string, config: BudgetConfig) => string;
   deleteBudget: (id: string) => void;
-  PALETTE: string[];
 }
 
 // ─── Color mode toggle ────────────────────────────────────────────────────────
@@ -66,14 +65,6 @@ function ColorModeToggle() {
 // ─── Derive summary stats from entry ─────────────────────────────────────────
 
 function deriveSummary(entry: BudgetEntry) {
-  const totalSpent = entry.transactions.reduce((a, t) => a + t.debit, 0);
-  const totalIncome = entry.transactions.reduce((a, t) => a + t.credit, 0);
-  const net = totalIncome - totalSpent;
-  const pct =
-    entry.config.budget > 0
-      ? Math.min((totalSpent / entry.config.budget) * 100, 100)
-      : 0;
-
   let status: "active" | "upcoming" | "ended" = "active";
   try {
     const from = parseISO(entry.config.rangeFrom);
@@ -83,20 +74,16 @@ function deriveSummary(entry: BudgetEntry) {
     else if (now > to) status = "ended";
   } catch {}
 
-  const days = (() => {
-    try {
-      return (
-        differenceInDays(
-          parseISO(entry.config.rangeTo),
-          parseISO(entry.config.rangeFrom),
-        ) + 1
-      );
-    } catch {
-      return 0;
-    }
-  })();
+  let days = 0;
+  try {
+    days =
+      differenceInDays(
+        parseISO(entry.config.rangeTo),
+        parseISO(entry.config.rangeFrom),
+      ) + 1;
+  } catch {}
 
-  return { totalSpent, totalIncome, net, pct, status, days };
+  return { status, days };
 }
 
 // ─── Compact burn bar ─────────────────────────────────────────────────────────

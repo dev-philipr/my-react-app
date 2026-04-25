@@ -29,7 +29,6 @@ import {
   Separator,
   Stack,
   Text,
-  VStack,
 } from "@chakra-ui/react";
 import { UTCDate } from "@date-fns/utc";
 import { format, parseISO } from "date-fns";
@@ -432,33 +431,35 @@ function TransactionForm({
 }: TransactionFormProps) {
   const dateId = useId();
   const nameId = useId();
-  const creditId = useId();
-  const debitId = useId();
   const [date, setDate] = useState<string>(
     lockedDate ?? initial?.date ?? format(new Date(), "yyyy-MM-dd"),
   );
   const [name, setName] = useState<string>(initial?.name ?? "");
-  const [credit, setCredit] = useState<string>(
-    initial?.credit != null && initial.credit > 0 ? String(initial.credit) : "",
+  const [type, setType] = useState<"debit" | "credit">(
+    initial ? (initial.credit != null && initial.credit > 0 ? "credit" : "debit") : "debit",
   );
-  const [debit, setDebit] = useState<string>(
-    initial?.debit != null && initial.debit > 0 ? String(initial.debit) : "",
+  const [amount, setAmount] = useState<string>(
+    initial
+      ? initial.credit != null && initial.credit > 0
+        ? String(initial.credit)
+        : initial.debit != null && initial.debit > 0
+          ? String(initial.debit)
+          : ""
+      : "",
   );
 
   const isValid =
-    date.trim() !== "" &&
-    (credit.trim() !== "" || debit.trim() !== "") &&
-    parseFloat(credit || "0") >= 0 &&
-    parseFloat(debit || "0") >= 0;
+    date.trim() !== "" && amount.trim() !== "" && parseFloat(amount) > 0;
 
   function handleSave() {
     if (!isValid) return;
+    const val = parseFloat(amount);
     onSave({
       ...(initial?.id ? { id: initial.id } : {}),
       date,
       name: name.trim() || undefined,
-      credit: parseFloat(credit || "0"),
-      debit: parseFloat(debit || "0"),
+      credit: type === "credit" ? val : 0,
+      debit: type === "debit" ? val : 0,
     });
   }
 
@@ -496,6 +497,28 @@ function TransactionForm({
           </Box>
         )}
       </Text>
+      <Flex gap={1.5} mb={4}>
+        <Button
+          size="sm"
+          variant={type === "debit" ? "solid" : "outline"}
+          colorPalette={type === "debit" ? "red" : "gray"}
+          borderRadius="full"
+          flex="1"
+          onClick={() => setType("debit")}
+        >
+          − Expense
+        </Button>
+        <Button
+          size="sm"
+          variant={type === "credit" ? "solid" : "outline"}
+          colorPalette={type === "credit" ? "green" : "gray"}
+          borderRadius="full"
+          flex="1"
+          onClick={() => setType("credit")}
+        >
+          + Income
+        </Button>
+      </Flex>
       <Grid
         templateColumns={{ base: "1fr", sm: lockedDate ? "1fr" : "auto 1fr" }}
         gap={4}
@@ -529,7 +552,7 @@ function TransactionForm({
             textTransform="uppercase"
             letterSpacing="wider"
           >
-            Label{" "}
+            {type === "debit" ? "Expense" : "Income"}{" "}
             <Box
               as="span"
               color="fg.subtle"
@@ -544,72 +567,42 @@ function TransactionForm({
           <Input
             size="sm"
             borderRadius="lg"
-            placeholder="e.g. Groceries, Coffee, Salary…"
+            placeholder={type === "debit" ? "e.g. Groceries, Coffee…" : "e.g. Salary, Refund…"}
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
         </Field.Root>
       </Grid>
-      <Grid templateColumns={{ base: "1fr 1fr" }} gap={4} mb={5}>
-        <Field.Root id={creditId}>
-          <Field.Label
-            fontSize="xs"
-            color="green.500"
-            fontWeight="semibold"
-            textTransform="uppercase"
-            letterSpacing="wider"
-          >
-            Credit
-          </Field.Label>
-          <InputGroup
-            startElement={
-              <Text fontSize="xs" color="fg.muted">
-                $
-              </Text>
-            }
-          >
-            <Input
-              type="number"
-              size="sm"
-              borderRadius="lg"
-              placeholder="0.00"
-              min={0}
-              step={0.01}
-              value={credit}
-              onChange={(e) => setCredit(e.target.value)}
-            />
-          </InputGroup>
-        </Field.Root>
-        <Field.Root id={debitId}>
-          <Field.Label
-            fontSize="xs"
-            color="red.500"
-            fontWeight="semibold"
-            textTransform="uppercase"
-            letterSpacing="wider"
-          >
-            Debit
-          </Field.Label>
-          <InputGroup
-            startElement={
-              <Text fontSize="xs" color="fg.muted">
-                $
-              </Text>
-            }
-          >
-            <Input
-              type="number"
-              size="sm"
-              borderRadius="lg"
-              placeholder="0.00"
-              min={0}
-              step={0.01}
-              value={debit}
-              onChange={(e) => setDebit(e.target.value)}
-            />
-          </InputGroup>
-        </Field.Root>
-      </Grid>
+      <Field.Root mb={5}>
+        <Field.Label
+          fontSize="xs"
+          color={type === "debit" ? "red.500" : "green.500"}
+          fontWeight="semibold"
+          textTransform="uppercase"
+          letterSpacing="wider"
+        >
+          Amount
+        </Field.Label>
+        <InputGroup
+          startElement={
+            <Text fontSize="xs" color="fg.muted">
+              $
+            </Text>
+          }
+        >
+          <Input
+            type="number"
+            size="sm"
+            borderRadius="lg"
+            placeholder="0.00"
+            min={0}
+            step={0.01}
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleSave()}
+          />
+        </InputGroup>
+      </Field.Root>
       <Flex gap={3} justify="flex-end">
         <Button size="sm" variant="ghost" borderRadius="lg" onClick={onCancel}>
           <X size={14} />
@@ -698,7 +691,7 @@ function QuickAddRow({
         <Input
           size="sm"
           borderRadius="lg"
-          placeholder="Label (optional)"
+          placeholder={type === "debit" ? "Expense (optional)" : "Income (optional)"}
           value={name}
           flex="1"
           onChange={(e) => setName(e.target.value)}
@@ -1425,9 +1418,6 @@ export default function BudgetDetail({
     bump();
   }, [id, draftName, updateBudgetMeta, bump]);
 
-  const handleCancelEditName = useCallback(() => {
-    setEditingName(false);
-  }, []);
 
   const handleSaveConfig = useCallback(
     (c: BudgetConfig) => {
@@ -1517,7 +1507,7 @@ export default function BudgetDetail({
     <Box minH="100vh" bg="bg" pt={4} pb={20}>
       <Container maxW="900px">
         <Stack gap={10}>
-          <Flex flexDir="column" gap={2}>
+          <Stack gap={4}>
             {/* ── Breadcrumb + Header ── */}
             <Stack gap={3}>
               <Flex align="center" gap={2} wrap="wrap">
@@ -1536,11 +1526,9 @@ export default function BudgetDetail({
                   size={12}
                   color="var(--chakra-colors-fg-subtle)"
                 />
-                <Flex align="center" gap={1.5}>
-                  <Text fontSize="xs" color="fg.subtle" fontWeight="medium">
-                    {entry.meta.name}
-                  </Text>
-                </Flex>
+                <Text fontSize="xs" color="fg.subtle" fontWeight="medium">
+                  {entry.meta.name}
+                </Text>
               </Flex>
 
               <Flex align="center" gap={2} wrap="wrap">
@@ -1568,10 +1556,8 @@ export default function BudgetDetail({
                     {events.length} days
                   </Badge>
                 </Box>
-                <Flex align="end" gap={0}>
-                  <Box alignSelf="end" lineHeight="2">
-                    <MethodDrawer />
-                  </Box>
+                <Flex align="center" gap={1}>
+                  <MethodDrawer />
                   <ColorModeToggle />
                 </Flex>
               </Flex>
@@ -1588,7 +1574,7 @@ export default function BudgetDetail({
                         onChange={(e) => setDraftName(e.target.value)}
                         onKeyDown={(e) => {
                           if (e.key === "Enter") handleSaveName();
-                          if (e.key === "Escape") handleCancelEditName();
+                          if (e.key === "Escape") setEditingName(false);
                         }}
                         fontWeight="black"
                         letterSpacing="-0.04em"
@@ -1610,7 +1596,7 @@ export default function BudgetDetail({
                         size="sm"
                         variant="ghost"
                         borderRadius="lg"
-                        onClick={handleCancelEditName}
+                        onClick={() => setEditingName(false)}
                       >
                         <X size={14} />
                       </IconButton>
@@ -1655,7 +1641,7 @@ export default function BudgetDetail({
               />
             )}
 
-            <VStack gap="1">
+            <Stack gap="1">
               <Flex alignSelf="flex-end">
                 <Button
                   size="sm"
@@ -1697,8 +1683,8 @@ export default function BudgetDetail({
                   sub="vs daily limit"
                 />
               </Flex>
-            </VStack>
-          </Flex>
+            </Stack>
+          </Stack>
 
           {/* ── Budget Burn ── */}
           <Box

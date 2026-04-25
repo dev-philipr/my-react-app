@@ -40,16 +40,6 @@ const KEYS = {
   LEGACY_TRANSACTIONS: "budget_transactions_v1",
 } as const;
 
-const PALETTE = [
-  "green",
-  "blue",
-  "teal",
-  "green",
-  "orange",
-  "pink",
-  "red",
-  "cyan",
-];
 
 function genId(): string {
   return Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
@@ -148,7 +138,7 @@ export function useBudgets() {
       setIndex((prev) => [...prev, meta]);
       return id;
     },
-    [index.length],
+    [],
   );
 
   const deleteBudget = useCallback((id: string) => {
@@ -214,6 +204,5 @@ export function useBudgets() {
     updateBudgetConfig,
     upsertTransaction,
     deleteTransaction,
-    PALETTE,
   };
 }

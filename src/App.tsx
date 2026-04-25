@@ -14,7 +14,6 @@ function AppRoutes() {
     updateBudgetConfig,
     upsertTransaction,
     deleteTransaction,
-    PALETTE,
   } = useBudgets();
 
   return (
@@ -27,7 +26,6 @@ function AppRoutes() {
             getBudgetEntry={getBudgetEntry}
             createBudget={createBudget}
             deleteBudget={deleteBudget}
-            PALETTE={PALETTE}
           />
         }
       />
