@@ -24,8 +24,9 @@ import {
   ChevronRight,
   Plus,
   Search,
+  Pencil,
 } from "lucide-react";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useColorMode } from "./components/ui/color-mode";
 import type {
@@ -44,6 +45,7 @@ interface BudgetListProps {
   getBudgetEntry: (id: string) => BudgetEntry | null;
   createBudget: (name: string, config: BudgetConfig) => string;
   deleteBudget: (id: string) => void;
+  renameSpace: (newSlug: string) => Promise<string | null>;
 }
 
 // ─── Color mode toggle ────────────────────────────────────────────────────────
@@ -686,6 +688,118 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
   );
 }
 
+// ─── Space slug editor ────────────────────────────────────────────────────────
+
+function SpaceSlugEditor({
+  projectSlug,
+  onRename,
+}: {
+  projectSlug: string;
+  onRename: (newSlug: string) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(projectSlug);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setEditing(false);
+    setValue(projectSlug);
+  }, [projectSlug]);
+
+  function sanitize(s: string) {
+    return s.toLowerCase().replace(/[^a-z0-9-]/g, "");
+  }
+
+  async function save() {
+    const slug = sanitize(value);
+    if (!slug || slug === projectSlug) {
+      setEditing(false);
+      return;
+    }
+    setSaving(true);
+    await onRename(slug);
+    setSaving(false);
+  }
+
+  if (!editing) {
+    return (
+      <Flex
+        align="center"
+        gap={1}
+        cursor="pointer"
+        role="group"
+        onClick={() => {
+          setValue(projectSlug);
+          setEditing(true);
+        }}
+        w="fit-content"
+      >
+        <Text
+          fontSize="xs"
+          fontFamily="mono"
+          color="fg.subtle"
+          _groupHover={{ color: "fg.muted" }}
+          transition="color 0.15s"
+        >
+          /{projectSlug}
+        </Text>
+        <Box
+          opacity={0}
+          _groupHover={{ opacity: 1 }}
+          transition="opacity 0.15s"
+          color="fg.subtle"
+        >
+          <Pencil size={10} />
+        </Box>
+      </Flex>
+    );
+  }
+
+  return (
+    <Flex align="center" gap={1.5}>
+      <Text fontSize="xs" fontFamily="mono" color="fg.subtle">
+        /
+      </Text>
+      <Input
+        size="2xs"
+        value={value}
+        autoFocus
+        fontFamily="mono"
+        fontSize="xs"
+        w="160px"
+        borderRadius="md"
+        disabled={saving}
+        onChange={(e) => setValue(sanitize(e.target.value))}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") save();
+          if (e.key === "Escape") setEditing(false);
+        }}
+      />
+      <IconButton
+        size="2xs"
+        variant="ghost"
+        colorPalette="green"
+        borderRadius="md"
+        aria-label="Save"
+        disabled={saving}
+        onClick={save}
+      >
+        <Check size={11} />
+      </IconButton>
+      <IconButton
+        size="2xs"
+        variant="ghost"
+        borderRadius="md"
+        aria-label="Cancel"
+        disabled={saving}
+        onClick={() => setEditing(false)}
+      >
+        <X size={11} />
+      </IconButton>
+    </Flex>
+  );
+}
+
 // ─── BudgetList page ──────────────────────────────────────────────────────────
 
 export default function BudgetList({
@@ -694,6 +808,7 @@ export default function BudgetList({
   getBudgetEntry,
   createBudget,
   deleteBudget,
+  renameSpace,
 }: BudgetListProps) {
   const navigate = useNavigate();
   const [showCreate, setShowCreate] = useState(false);
@@ -744,16 +859,28 @@ export default function BudgetList({
               gap={4}
             >
               <Box>
-                <Text
-                  fontSize="xs"
-                  fontWeight="semibold"
-                  letterSpacing="widest"
-                  textTransform="uppercase"
-                  color="fg.muted"
-                  mb={2}
-                >
-                  Day Pocket
-                </Text>
+                <Flex align="start">
+                  <Text
+                    fontSize="xs"
+                    fontWeight="semibold"
+                    letterSpacing="widest"
+                    textTransform="uppercase"
+                    color="fg.muted"
+                    mb={1}
+                  >
+                    Day Pocket
+                  </Text>
+                  <SpaceSlugEditor
+                    projectSlug={projectSlug}
+                    onRename={async (newSlug) => {
+                      const result = await renameSpace(newSlug);
+                      if (result) {
+                        localStorage.setItem("dp_space_slug", result);
+                        navigate(`/${result}`);
+                      }
+                    }}
+                  />
+                </Flex>
                 <Text
                   fontSize={{ base: "3xl", md: "5xl" }}
                   fontWeight="black"

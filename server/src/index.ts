@@ -71,6 +71,41 @@ app.post("/api/spaces", async (c) => {
   }
 });
 
+app.put("/api/spaces/:projectSlug", async (c) => {
+  const { projectSlug } = c.req.param();
+  const body = await c.req.json<{ slug?: string; name?: string }>();
+  const newSlug = body.slug?.trim().toLowerCase().replace(/[^a-z0-9-]/g, "");
+
+  if (!newSlug && !body.name) return c.json({ error: "slug or name required" }, 400);
+
+  if (newSlug && newSlug !== projectSlug) {
+    const conflict = await c.env.DB.prepare(
+      "SELECT slug FROM project_spaces WHERE slug = ?",
+    )
+      .bind(newSlug)
+      .first();
+    if (conflict) return c.json({ error: "Slug already taken" }, 409);
+
+    await c.env.DB.prepare(
+      "UPDATE project_spaces SET slug = ?, name = COALESCE(?, name) WHERE slug = ?",
+    )
+      .bind(newSlug, body.name ?? null, projectSlug)
+      .run();
+
+    return c.json({ slug: newSlug });
+  }
+
+  if (body.name) {
+    await c.env.DB.prepare(
+      "UPDATE project_spaces SET name = ? WHERE slug = ?",
+    )
+      .bind(body.name, projectSlug)
+      .run();
+  }
+
+  return c.json({ slug: projectSlug });
+});
+
 app.get("/api/spaces/:projectSlug", async (c) => {
   const { projectSlug } = c.req.param();
 

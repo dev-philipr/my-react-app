@@ -5,6 +5,7 @@ import {
   createSpace,
   createBudget as apiBudget,
   updateBudget as apiUpdateBudget,
+  updateSpace as apiUpdateSpace,
   deleteBudget as apiDeleteBudget,
   upsertTransaction as apiUpsertTx,
   deleteTransaction as apiDeleteTx,
@@ -278,6 +279,14 @@ export function useBudgets(projectSlug: string) {
     [projectSlug, queryClient],
   );
 
+  const renameSpace = useCallback(
+    async (newSlug: string): Promise<string | null> => {
+      const result = await apiUpdateSpace(projectSlug, { slug: newSlug });
+      return result?.slug ?? null;
+    },
+    [projectSlug],
+  );
+
   const deleteTransaction = useCallback(
     (budgetId: string, txId: string) => {
       patch((prev) => ({
@@ -307,5 +316,6 @@ export function useBudgets(projectSlug: string) {
     updateBudgetConfig,
     upsertTransaction,
     deleteTransaction,
+    renameSpace,
   };
 }

@@ -27,6 +27,16 @@ export async function createSpace(
   });
 }
 
+export async function updateSpace(
+  projectSlug: string,
+  patch: { slug?: string; name?: string },
+): Promise<{ slug: string } | null> {
+  return api(`/api/spaces/${projectSlug}`, {
+    method: "PUT",
+    body: JSON.stringify(patch),
+  });
+}
+
 export async function getSpace(
   projectSlug: string,
 ): Promise<{ slug: string; name: string; budgets: ServerBudget[] } | null> {
