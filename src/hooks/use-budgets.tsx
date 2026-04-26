@@ -54,15 +54,6 @@ type SpaceData = {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function slugify(str: string): string {
-  return (
-    str
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, 40) || "budget"
-  );
-}
 
 function spaceKey(projectSlug: string) {
   return ["space", projectSlug] as const;
@@ -187,7 +178,7 @@ export function useBudgets(projectSlug: string) {
 
   const createBudget = useCallback(
     (name: string, config: BudgetConfig): string => {
-      const slug = `${slugify(name)}-${nanoid(8)}`;
+      const slug = nanoid(8);
       patch((prev) => ({
         ...prev,
         budgets: [

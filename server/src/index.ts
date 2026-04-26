@@ -12,15 +12,6 @@ const app = new Hono<{ Bindings: Bindings }>();
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function slugify(str: string): string {
-  return (
-    str
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, 50) || "budget"
-  );
-}
 
 function shortId(): string {
   return nanoid(8);
@@ -60,7 +51,7 @@ app.post("/api/spaces", async (c) => {
   const name = body.name?.trim();
   if (!name) return c.json({ error: "name required" }, 400);
 
-  const slug = body.slug?.trim() || `${slugify(name)}-${shortId()}`;
+  const slug = body.slug?.trim() || shortId();
 
   try {
     await c.env.DB.prepare(
@@ -141,7 +132,7 @@ app.post("/api/spaces/:projectSlug/budgets", async (c) => {
   if (!name || !body.rangeFrom || !body.rangeTo)
     return c.json({ error: "name, rangeFrom, rangeTo required" }, 400);
 
-  const slug = body.slug?.trim() || `${slugify(name)}-${shortId()}`;
+  const slug = body.slug?.trim() || shortId();
 
   try {
     const result = await c.env.DB.prepare(
