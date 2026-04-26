@@ -8,12 +8,25 @@ type Bindings = {
   ASSETS: Fetcher;
 };
 
+type SpaceRow = {
+  slug: string;
+  name: string;
+  owner_email: string | null;
+  is_private: number;
+};
+
 const app = new Hono<{ Bindings: Bindings }>();
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function shortId(): string {
   return nanoid(8);
+}
+
+function emailHeader(c: {
+  req: { header(name: string): string | undefined };
+}): string | null {
+  return c.req.header("X-User-Email")?.trim().toLowerCase() || null;
 }
 
 async function getBudgetId(
@@ -26,6 +39,35 @@ async function getBudgetId(
     .bind(projectSlug, budgetSlug)
     .first<{ id: number }>();
   return row?.id ?? null;
+}
+
+async function checkAccess(
+  db: D1Database,
+  projectSlug: string,
+  email: string | null,
+): Promise<"ok" | "denied" | "not_found"> {
+  const space = await db
+    .prepare(
+      "SELECT owner_email, is_private FROM project_spaces WHERE slug = ?",
+    )
+    .bind(projectSlug)
+    .first<Pick<SpaceRow, "owner_email" | "is_private">>();
+
+  if (!space) return "not_found";
+  if (!space.is_private) return "ok";
+  if (!email) return "denied";
+
+  const isOwner =
+    space.owner_email === null || space.owner_email === email;
+  if (isOwner) return "ok";
+
+  const member = await db
+    .prepare(
+      "SELECT 1 FROM space_members WHERE space_slug = ? AND email = ?",
+    )
+    .bind(projectSlug, email)
+    .first();
+  return member ? "ok" : "denied";
 }
 
 // ─── Legacy routes (kept for backwards compat) ────────────────────────────────
@@ -51,16 +93,16 @@ app.post("/api/spaces", async (c) => {
   if (!name) return c.json({ error: "name required" }, 400);
 
   const slug = body.slug?.trim() || shortId();
+  const email = emailHeader(c);
 
   try {
     await c.env.DB.prepare(
-      "INSERT INTO project_spaces (slug, name) VALUES (?, ?)",
+      "INSERT INTO project_spaces (slug, name, owner_email) VALUES (?, ?, ?)",
     )
-      .bind(slug, name)
+      .bind(slug, name, email)
       .run();
     return c.json({ slug, name }, 201);
   } catch {
-    // Slug already exists — return it
     const existing = await c.env.DB.prepare(
       "SELECT slug, name FROM project_spaces WHERE slug = ?",
     )
@@ -68,6 +110,71 @@ app.post("/api/spaces", async (c) => {
       .first<{ slug: string; name: string }>();
     return c.json(existing ?? { slug, name }, 200);
   }
+});
+
+app.get("/api/spaces/:projectSlug", async (c) => {
+  const { projectSlug } = c.req.param();
+  const email = emailHeader(c);
+
+  const access = await checkAccess(c.env.DB, projectSlug, email);
+  if (access === "not_found") return c.json({ error: "Space not found" }, 404);
+  if (access === "denied") return c.json({ error: "Access denied" }, 403);
+
+  const space = await c.env.DB.prepare(
+    "SELECT * FROM project_spaces WHERE slug = ?",
+  )
+    .bind(projectSlug)
+    .first<SpaceRow>();
+
+  // Only return member list to the owner
+  let members: string[] = [];
+  const isOwner =
+    space!.owner_email === null || space!.owner_email === email;
+  if (isOwner && space!.is_private) {
+    const rows = await c.env.DB.prepare(
+      "SELECT email FROM space_members WHERE space_slug = ? ORDER BY email ASC",
+    )
+      .bind(projectSlug)
+      .all<{ email: string }>();
+    members = rows.results.map((r) => r.email);
+  }
+
+  const budgetsResult = await c.env.DB.prepare(
+    "SELECT * FROM budgets WHERE project_slug = ? ORDER BY created_at DESC",
+  )
+    .bind(projectSlug)
+    .all();
+
+  const txResult = await c.env.DB.prepare(
+    `SELECT t.*, b.slug AS budget_slug
+     FROM transactions t
+     JOIN budgets b ON t.budget_id = b.id
+     WHERE b.project_slug = ?
+     ORDER BY t.date DESC`,
+  )
+    .bind(projectSlug)
+    .all();
+
+  const txByBudget = new Map<string, unknown[]>();
+  for (const tx of txResult.results) {
+    const slug = (tx as { budget_slug: string }).budget_slug;
+    if (!txByBudget.has(slug)) txByBudget.set(slug, []);
+    txByBudget.get(slug)!.push(tx);
+  }
+
+  const budgets = budgetsResult.results.map((b) => ({
+    ...b,
+    transactions: txByBudget.get((b as { slug: string }).slug) ?? [],
+  }));
+
+  return c.json({
+    slug: space!.slug,
+    name: space!.name,
+    owner_email: space!.owner_email,
+    is_private: Boolean(space!.is_private),
+    members,
+    budgets,
+  });
 });
 
 app.put("/api/spaces/:projectSlug", async (c) => {
@@ -107,47 +214,119 @@ app.put("/api/spaces/:projectSlug", async (c) => {
   return c.json({ slug: projectSlug });
 });
 
-app.get("/api/spaces/:projectSlug", async (c) => {
+// ─── Space settings (privacy) — owner only ────────────────────────────────────
+
+app.put("/api/spaces/:projectSlug/settings", async (c) => {
   const { projectSlug } = c.req.param();
+  const email = emailHeader(c);
+  if (!email) return c.json({ error: "X-User-Email required" }, 401);
+
+  const body = await c.req.json<{ is_private?: boolean }>();
 
   const space = await c.env.DB.prepare(
-    "SELECT * FROM project_spaces WHERE slug = ?",
+    "SELECT owner_email FROM project_spaces WHERE slug = ?",
   )
     .bind(projectSlug)
-    .first();
+    .first<Pick<SpaceRow, "owner_email">>();
   if (!space) return c.json({ error: "Space not found" }, 404);
 
-  const budgetsResult = await c.env.DB.prepare(
-    "SELECT * FROM budgets WHERE project_slug = ? ORDER BY created_at DESC",
-  )
-    .bind(projectSlug)
-    .all();
+  const isOwner = space.owner_email === null || space.owner_email === email;
+  if (!isOwner) return c.json({ error: "Forbidden" }, 403);
 
-  // Fetch all transactions for this space via budget_id join
-  const txResult = await c.env.DB.prepare(
-    `SELECT t.*, b.slug AS budget_slug
-     FROM transactions t
-     JOIN budgets b ON t.budget_id = b.id
-     WHERE b.project_slug = ?
-     ORDER BY t.date DESC`,
-  )
-    .bind(projectSlug)
-    .all();
-
-  // Group transactions by budget slug
-  const txByBudget = new Map<string, unknown[]>();
-  for (const tx of txResult.results) {
-    const slug = (tx as { budget_slug: string }).budget_slug;
-    if (!txByBudget.has(slug)) txByBudget.set(slug, []);
-    txByBudget.get(slug)!.push(tx);
+  // Claim ownership on first settings write if unclaimed
+  if (space.owner_email === null) {
+    await c.env.DB.prepare(
+      "UPDATE project_spaces SET owner_email = ? WHERE slug = ?",
+    )
+      .bind(email, projectSlug)
+      .run();
   }
 
-  const budgets = budgetsResult.results.map((b) => ({
-    ...b,
-    transactions: txByBudget.get((b as { slug: string }).slug) ?? [],
-  }));
+  if (typeof body.is_private === "boolean") {
+    await c.env.DB.prepare(
+      "UPDATE project_spaces SET is_private = ? WHERE slug = ?",
+    )
+      .bind(body.is_private ? 1 : 0, projectSlug)
+      .run();
+  }
 
-  return c.json({ ...space, budgets });
+  return c.json({ success: true });
+});
+
+// ─── Space members — owner only ───────────────────────────────────────────────
+
+app.get("/api/spaces/:projectSlug/members", async (c) => {
+  const { projectSlug } = c.req.param();
+  const email = emailHeader(c);
+
+  const space = await c.env.DB.prepare(
+    "SELECT owner_email FROM project_spaces WHERE slug = ?",
+  )
+    .bind(projectSlug)
+    .first<Pick<SpaceRow, "owner_email">>();
+  if (!space) return c.json({ error: "Space not found" }, 404);
+
+  const isOwner = space.owner_email === null || space.owner_email === email;
+  if (!isOwner) return c.json({ error: "Forbidden" }, 403);
+
+  const rows = await c.env.DB.prepare(
+    "SELECT email FROM space_members WHERE space_slug = ? ORDER BY email ASC",
+  )
+    .bind(projectSlug)
+    .all<{ email: string }>();
+
+  return c.json({ members: rows.results.map((r) => r.email) });
+});
+
+app.post("/api/spaces/:projectSlug/members", async (c) => {
+  const { projectSlug } = c.req.param();
+  const email = emailHeader(c);
+  const body = await c.req.json<{ email?: string }>();
+  const memberEmail = body.email?.trim().toLowerCase();
+
+  if (!email || !memberEmail)
+    return c.json({ error: "email required" }, 400);
+
+  const space = await c.env.DB.prepare(
+    "SELECT owner_email FROM project_spaces WHERE slug = ?",
+  )
+    .bind(projectSlug)
+    .first<Pick<SpaceRow, "owner_email">>();
+  if (!space) return c.json({ error: "Space not found" }, 404);
+
+  const isOwner = space.owner_email === null || space.owner_email === email;
+  if (!isOwner) return c.json({ error: "Forbidden" }, 403);
+
+  await c.env.DB.prepare(
+    "INSERT OR IGNORE INTO space_members (space_slug, email) VALUES (?, ?)",
+  )
+    .bind(projectSlug, memberEmail)
+    .run();
+
+  return c.json({ success: true }, 201);
+});
+
+app.delete("/api/spaces/:projectSlug/members/:memberEmail", async (c) => {
+  const { projectSlug, memberEmail } = c.req.param();
+  const email = emailHeader(c);
+
+  const space = await c.env.DB.prepare(
+    "SELECT owner_email FROM project_spaces WHERE slug = ?",
+  )
+    .bind(projectSlug)
+    .first<Pick<SpaceRow, "owner_email">>();
+  if (!space) return c.json({ error: "Space not found" }, 404);
+
+  const isOwner = space.owner_email === null || space.owner_email === email;
+  if (!isOwner) return c.json({ error: "Forbidden" }, 403);
+
+  await c.env.DB.prepare(
+    "DELETE FROM space_members WHERE space_slug = ? AND email = ?",
+  )
+    .bind(projectSlug, memberEmail.toLowerCase())
+    .run();
+
+  return c.json({ success: true });
 });
 
 // ─── Budgets ──────────────────────────────────────────────────────────────────

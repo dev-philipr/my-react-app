@@ -2,10 +2,20 @@ import type { BudgetConfig, BudgetEntry, BudgetMeta, Transaction } from "./hooks
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+export const ACCESS_DENIED = Symbol("ACCESS_DENIED");
+
+function storedEmail(): string | null {
+  try { return localStorage.getItem("dp_user_email"); } catch { return null; }
+}
+
 async function api<T>(url: string, init?: RequestInit): Promise<T | null> {
   try {
+    const email = storedEmail();
     const res = await fetch(url, {
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(email ? { "X-User-Email": email } : {}),
+      },
       ...init,
     });
     if (!res.ok) return null;
@@ -27,6 +37,34 @@ export async function createSpace(
   });
 }
 
+export type SpaceResponse = {
+  slug: string;
+  name: string;
+  owner_email: string | null;
+  is_private: boolean;
+  members: string[];
+  budgets: ServerBudget[];
+};
+
+export async function getSpace(
+  projectSlug: string,
+): Promise<SpaceResponse | typeof ACCESS_DENIED | null> {
+  try {
+    const email = storedEmail();
+    const res = await fetch(`/api/spaces/${projectSlug}`, {
+      headers: {
+        "Content-Type": "application/json",
+        ...(email ? { "X-User-Email": email } : {}),
+      },
+    });
+    if (res.status === 403) return ACCESS_DENIED;
+    if (!res.ok) return null;
+    return res.json() as Promise<SpaceResponse>;
+  } catch {
+    return null;
+  }
+}
+
 export async function updateSpace(
   projectSlug: string,
   patch: { slug?: string; name?: string },
@@ -37,10 +75,37 @@ export async function updateSpace(
   });
 }
 
-export async function getSpace(
+export async function updateSpaceSettings(
   projectSlug: string,
-): Promise<{ slug: string; name: string; budgets: ServerBudget[] } | null> {
-  return api(`/api/spaces/${projectSlug}`);
+  patch: { is_private?: boolean },
+): Promise<boolean> {
+  const res = await api(`/api/spaces/${projectSlug}/settings`, {
+    method: "PUT",
+    body: JSON.stringify(patch),
+  });
+  return res !== null;
+}
+
+export async function addSpaceMember(
+  projectSlug: string,
+  memberEmail: string,
+): Promise<boolean> {
+  const res = await api(`/api/spaces/${projectSlug}/members`, {
+    method: "POST",
+    body: JSON.stringify({ email: memberEmail }),
+  });
+  return res !== null;
+}
+
+export async function removeSpaceMember(
+  projectSlug: string,
+  memberEmail: string,
+): Promise<boolean> {
+  const res = await api(
+    `/api/spaces/${projectSlug}/members/${encodeURIComponent(memberEmail)}`,
+    { method: "DELETE" },
+  );
+  return res !== null;
 }
 
 // ─── Budgets ──────────────────────────────────────────────────────────────────
@@ -135,23 +200,15 @@ export async function upsertTransaction(
   tx: Omit<Transaction, "id"> & { id?: string },
 ): Promise<{ id: string } | null> {
   if (tx.id) {
-    // Update existing
     const res = await api(
       `/api/spaces/${projectSlug}/budgets/${budgetSlug}/transactions/${tx.id}`,
-      {
-        method: "PUT",
-        body: JSON.stringify(tx),
-      },
+      { method: "PUT", body: JSON.stringify(tx) },
     );
     return res !== null ? { id: tx.id } : null;
   }
-  // Create new
   return api(
     `/api/spaces/${projectSlug}/budgets/${budgetSlug}/transactions`,
-    {
-      method: "POST",
-      body: JSON.stringify(tx),
-    },
+    { method: "POST", body: JSON.stringify(tx) },
   );
 }
 

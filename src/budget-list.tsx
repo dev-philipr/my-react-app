@@ -12,6 +12,7 @@ import {
   Stack,
   Text,
   Icon,
+  Separator,
 } from "@chakra-ui/react";
 import { parseISO, differenceInDays, format } from "date-fns";
 import {
@@ -25,6 +26,10 @@ import {
   Plus,
   Search,
   Pencil,
+  Lock,
+  Unlock,
+  UserPlus,
+  UserMinus,
 } from "lucide-react";
 import { useState, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
@@ -36,6 +41,16 @@ import type {
 } from "./hooks/use-budgets";
 import { MethodDrawer } from "./budget-details";
 import { useBudget } from "./hooks/use-budget";
+import { useEmail } from "./hooks/use-email";
+import {
+  DialogRoot,
+  DialogContent,
+  DialogHeader,
+  DialogBody,
+  DialogTitle,
+  DialogCloseTrigger,
+} from "./components/ui/dialog";
+import { Switch } from "./components/ui/switch";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -46,6 +61,14 @@ interface BudgetListProps {
   createBudget: (name: string, config: BudgetConfig) => string;
   deleteBudget: (id: string) => void;
   renameSpace: (newSlug: string) => Promise<string | null>;
+  spaceIsPrivate: boolean;
+  spaceOwnerEmail: string | null;
+  spaceMembers: string[];
+  isOwner: boolean;
+  claimSpace: () => Promise<boolean>;
+  updateSpacePrivacy: (isPrivate: boolean) => Promise<boolean>;
+  addMember: (email: string) => Promise<boolean>;
+  removeMember: (email: string) => Promise<boolean>;
 }
 
 // ─── Color mode toggle ────────────────────────────────────────────────────────
@@ -800,6 +823,218 @@ function SpaceSlugEditor({
   );
 }
 
+// ─── Privacy settings modal ───────────────────────────────────────────────────
+
+interface PrivacySettingsModalProps {
+  open: boolean;
+  onClose: () => void;
+  projectSlug: string;
+  isPrivate: boolean;
+  ownerEmail: string | null;
+  members: string[];
+  onClaim: () => Promise<boolean>;
+  onTogglePrivate: (val: boolean) => Promise<boolean>;
+  onAddMember: (email: string) => Promise<boolean>;
+  onRemoveMember: (email: string) => Promise<boolean>;
+}
+
+function PrivacySettingsModal({
+  open,
+  onClose,
+  isPrivate,
+  ownerEmail,
+  members,
+  onClaim,
+  onTogglePrivate,
+  onAddMember,
+  onRemoveMember,
+}: PrivacySettingsModalProps) {
+  const { email: currentUserEmail, setEmail: saveEmail } = useEmail();
+  const [newEmail, setNewEmail] = useState("");
+  const [claimEmail, setClaimEmail] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const isOwner = ownerEmail === null || ownerEmail === currentUserEmail;
+  const unclaimed = ownerEmail === null;
+
+  async function handleClaim() {
+    const email = currentUserEmail || claimEmail.trim().toLowerCase();
+    if (!email) return;
+    if (!currentUserEmail) saveEmail(claimEmail.trim());
+    setSaving(true);
+    await onClaim();
+    setSaving(false);
+  }
+
+  async function handleToggle() {
+    setSaving(true);
+    await onTogglePrivate(!isPrivate);
+    setSaving(false);
+  }
+
+  async function handleAdd() {
+    const email = newEmail.trim().toLowerCase();
+    if (!email) return;
+    setSaving(true);
+    const ok = await onAddMember(email);
+    if (ok) setNewEmail("");
+    setSaving(false);
+  }
+
+  async function handleRemove(email: string) {
+    setSaving(true);
+    await onRemoveMember(email);
+    setSaving(false);
+  }
+
+  return (
+    <DialogRoot open={open} onOpenChange={({ open: o }) => !o && onClose()}>
+      <DialogContent borderRadius="3xl" maxW="480px">
+        <DialogHeader pb={0}>
+          <DialogTitle>
+            <Flex align="center" gap={2}>
+              <Icon color={isPrivate ? "orange.400" : "fg.subtle"}>
+                {isPrivate ? <Lock size={16} /> : <Unlock size={16} />}
+              </Icon>
+              Space access
+            </Flex>
+          </DialogTitle>
+          <DialogCloseTrigger />
+        </DialogHeader>
+
+        <DialogBody pb={6}>
+          <Stack gap={5}>
+            {/* Owner */}
+            <Box>
+              <Text fontSize="xs" fontWeight="semibold" color="fg.muted" textTransform="uppercase" letterSpacing="wider" mb={1.5}>
+                Owner
+              </Text>
+              {ownerEmail ? (
+                <Text fontSize="sm" fontFamily="mono" color="fg">{ownerEmail}</Text>
+              ) : (
+                <Stack gap={2}>
+                  <Text fontSize="sm" color="fg.subtle">Unclaimed — set your email to claim this space.</Text>
+                  {!currentUserEmail && (
+                    <Input
+                      size="sm"
+                      type="email"
+                      placeholder="your@email.com"
+                      borderRadius="lg"
+                      value={claimEmail}
+                      onChange={(e) => setClaimEmail(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleClaim()}
+                      disabled={saving}
+                    />
+                  )}
+                  <Button
+                    size="sm"
+                    colorPalette="orange"
+                    variant="outline"
+                    borderRadius="lg"
+                    onClick={handleClaim}
+                    disabled={saving || (!currentUserEmail && !claimEmail.trim())}
+                    alignSelf="flex-start"
+                  >
+                    <Lock size={13} /> Claim ownership
+                  </Button>
+                </Stack>
+              )}
+            </Box>
+
+            <Separator />
+
+            {/* Privacy toggle */}
+            {isOwner && (
+              <Flex justify="space-between" align="center">
+                <Box>
+                  <Text fontSize="sm" fontWeight="semibold" color="fg">
+                    Private space
+                  </Text>
+                  <Text fontSize="xs" color="fg.muted">
+                    {isPrivate ? "Only allowed emails can access" : "Anyone with the link can access"}
+                  </Text>
+                </Box>
+                <Switch
+                  checked={isPrivate}
+                  onCheckedChange={handleToggle}
+                  disabled={saving}
+                  colorPalette="orange"
+                />
+              </Flex>
+            )}
+
+            {/* Members list — only shown when private and owner */}
+            {isPrivate && isOwner && (
+              <>
+                <Separator />
+                <Box>
+                  <Text fontSize="xs" fontWeight="semibold" color="fg.muted" textTransform="uppercase" letterSpacing="wider" mb={3}>
+                    Allowed emails
+                  </Text>
+
+                  <Stack gap={2} mb={3}>
+                    {members.length === 0 ? (
+                      <Text fontSize="sm" color="fg.subtle">No members added yet.</Text>
+                    ) : (
+                      members.map((email) => (
+                        <Flex key={email} align="center" justify="space-between" px={3} py={2} bg="bg.subtle" borderRadius="lg" borderWidth="1px" borderColor="border.subtle">
+                          <Text fontSize="sm" fontFamily="mono">{email}</Text>
+                          <IconButton
+                            size="xs"
+                            variant="ghost"
+                            colorPalette="red"
+                            borderRadius="md"
+                            aria-label="Remove"
+                            disabled={saving}
+                            onClick={() => handleRemove(email)}
+                          >
+                            <UserMinus size={12} />
+                          </IconButton>
+                        </Flex>
+                      ))
+                    )}
+                  </Stack>
+
+                  {/* Add member */}
+                  <Flex gap={2}>
+                    <Input
+                      size="sm"
+                      type="email"
+                      placeholder="Add email address…"
+                      borderRadius="lg"
+                      value={newEmail}
+                      disabled={saving}
+                      onChange={(e) => setNewEmail(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+                    />
+                    <IconButton
+                      size="sm"
+                      colorPalette="green"
+                      borderRadius="lg"
+                      aria-label="Add member"
+                      disabled={saving || !newEmail.trim()}
+                      onClick={handleAdd}
+                    >
+                      <UserPlus size={14} />
+                    </IconButton>
+                  </Flex>
+                </Box>
+              </>
+            )}
+
+            {/* Non-owner view of a private space */}
+            {isPrivate && !isOwner && (
+              <Text fontSize="sm" color="fg.muted">
+                This space is private. Contact the owner to manage access.
+              </Text>
+            )}
+          </Stack>
+        </DialogBody>
+      </DialogContent>
+    </DialogRoot>
+  );
+}
+
 // ─── BudgetList page ──────────────────────────────────────────────────────────
 
 export default function BudgetList({
@@ -809,9 +1044,18 @@ export default function BudgetList({
   createBudget,
   deleteBudget,
   renameSpace,
+  spaceIsPrivate,
+  spaceOwnerEmail,
+  spaceMembers,
+  isOwner,
+  claimSpace,
+  updateSpacePrivacy,
+  addMember,
+  removeMember,
 }: BudgetListProps) {
   const navigate = useNavigate();
   const [showCreate, setShowCreate] = useState(false);
+  const [showPrivacy, setShowPrivacy] = useState(false);
   const [search, setSearch] = useState("");
 
   const entries = useMemo(
@@ -870,13 +1114,19 @@ export default function BudgetList({
                   >
                     Day Pocket
                   </Text>
-                  <SpaceSlugEditor
-                    projectSlug={projectSlug}
-                    onRename={async (newSlug) => {
-                      const result = await renameSpace(newSlug);
-                      if (result) navigate(`/${result}`);
-                    }}
-                  />
+                  {isOwner ? (
+                    <SpaceSlugEditor
+                      projectSlug={projectSlug}
+                      onRename={async (newSlug) => {
+                        const result = await renameSpace(newSlug);
+                        if (result) navigate(`/${result}`);
+                      }}
+                    />
+                  ) : (
+                    <Text fontSize="xs" fontFamily="mono" color="fg.subtle">
+                      /{projectSlug}
+                    </Text>
+                  )}
                 </Flex>
                 <Text
                   fontSize={{ base: "3xl", md: "5xl" }}
@@ -894,6 +1144,17 @@ export default function BudgetList({
 
               <Flex align="center" gap={2} mt={{ base: 0, md: 2 }}>
                 <MethodDrawer />
+                <IconButton
+                  aria-label="Space access settings"
+                  size="sm"
+                  variant="ghost"
+                  borderRadius="xl"
+                  onClick={() => setShowPrivacy(true)}
+                >
+                  <Icon color={spaceIsPrivate ? "orange.400" : undefined}>
+                    {spaceIsPrivate ? <Lock size={15} /> : <Unlock size={15} />}
+                  </Icon>
+                </IconButton>
                 <ColorModeToggle />
               </Flex>
             </Flex>
@@ -1040,6 +1301,19 @@ export default function BudgetList({
           onCancel={() => setShowCreate(false)}
         />
       )}
+
+      <PrivacySettingsModal
+        open={showPrivacy}
+        onClose={() => setShowPrivacy(false)}
+        projectSlug={projectSlug}
+        isPrivate={spaceIsPrivate}
+        ownerEmail={spaceOwnerEmail}
+        members={spaceMembers}
+        onClaim={claimSpace}
+        onTogglePrivate={updateSpacePrivacy}
+        onAddMember={addMember}
+        onRemoveMember={removeMember}
+      />
     </>
   );
 }

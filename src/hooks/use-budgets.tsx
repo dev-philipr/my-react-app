@@ -6,14 +6,19 @@ import {
   createBudget as apiBudget,
   updateBudget as apiUpdateBudget,
   updateSpace as apiUpdateSpace,
+  updateSpaceSettings as apiUpdateSettings,
+  addSpaceMember as apiAddMember,
+  removeSpaceMember as apiRemoveMember,
   deleteBudget as apiDeleteBudget,
   upsertTransaction as apiUpsertTx,
   deleteTransaction as apiDeleteTx,
   getSpace,
   serverBudgetToEntry,
+  ACCESS_DENIED,
   type ServerBudget,
   type ServerTransaction,
 } from "../api";
+import { getStoredEmail } from "./use-email";
 
 const nanoid = customAlphabet("abcdefghijklmnopqrstuvwxyz0123456789");
 
@@ -50,6 +55,9 @@ export interface BudgetEntry {
 type SpaceData = {
   slug: string;
   name: string;
+  owner_email: string | null;
+  is_private: boolean;
+  members: string[];
   budgets: ServerBudget[];
 };
 
@@ -64,25 +72,38 @@ function spaceKey(projectSlug: string) {
 export function useBudgets(projectSlug: string) {
   const queryClient = useQueryClient();
 
-  const { data: space, isLoading } = useQuery<SpaceData | null>({
+  const { data: space, isLoading, error } = useQuery<SpaceData | null>({
     queryKey: spaceKey(projectSlug),
     queryFn: async () => {
       let result = await getSpace(projectSlug);
+      if (result === ACCESS_DENIED) throw Object.assign(new Error("ACCESS_DENIED"), { code: 403 });
       if (!result) {
         await createSpace(projectSlug, projectSlug);
         result = await getSpace(projectSlug);
+        if (result === ACCESS_DENIED) throw Object.assign(new Error("ACCESS_DENIED"), { code: 403 });
       }
-      return result;
+      return result as SpaceData | null;
     },
+    retry: (_, err) => (err as { code?: number }).code !== 403,
     staleTime: 30_000,
   });
+
+  const accessDenied = (error as { code?: number } | null)?.code === 403;
+
+  const storedEmail = getStoredEmail();
+  const spaceIsPrivate = space?.is_private ?? false;
+  const spaceOwnerEmail = space?.owner_email ?? null;
+  const spaceMembers = space?.members ?? [];
+  const isOwner =
+    !spaceIsPrivate ||
+    spaceOwnerEmail === null ||
+    (storedEmail !== null && spaceOwnerEmail === storedEmail);
 
   const index = useMemo(
     () => (space?.budgets ?? []).map((b) => serverBudgetToEntry(b).meta),
     [space],
   );
 
-  // Reads from the query cache — re-evaluates whenever space updates
   const getBudgetEntry = useCallback(
     (id: string): BudgetEntry | null => {
       const b = space?.budgets.find((b) => b.slug === id) ?? null;
@@ -100,6 +121,68 @@ export function useBudgets(projectSlug: string) {
   function invalidate() {
     queryClient.invalidateQueries({ queryKey: spaceKey(projectSlug) });
   }
+
+  // ── Space ──────────────────────────────────────────────────────────────────
+
+  const renameSpace = useCallback(
+    async (newSlug: string): Promise<string | null> => {
+      const result = await apiUpdateSpace(projectSlug, { slug: newSlug });
+      return result?.slug ?? null;
+    },
+    [projectSlug],
+  );
+
+  const claimSpace = useCallback(
+    async (): Promise<boolean> => {
+      const ok = await apiUpdateSettings(projectSlug, {});
+      if (ok) invalidate();
+      return ok;
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [projectSlug],
+  );
+
+  const updateSpacePrivacy = useCallback(
+    async (isPrivate: boolean): Promise<boolean> => {
+      const ok = await apiUpdateSettings(projectSlug, { is_private: isPrivate });
+      if (ok) invalidate();
+      return ok;
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [projectSlug],
+  );
+
+  const addMember = useCallback(
+    async (memberEmail: string): Promise<boolean> => {
+      const ok = await apiAddMember(projectSlug, memberEmail.trim().toLowerCase());
+      if (ok) {
+        patch((prev) => ({
+          ...prev,
+          members: [...prev.members, memberEmail.trim().toLowerCase()].sort(),
+        }));
+      }
+      return ok;
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [projectSlug],
+  );
+
+  const removeMember = useCallback(
+    async (memberEmail: string): Promise<boolean> => {
+      const ok = await apiRemoveMember(projectSlug, memberEmail);
+      if (ok) {
+        patch((prev) => ({
+          ...prev,
+          members: prev.members.filter((m) => m !== memberEmail),
+        }));
+      }
+      return ok;
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [projectSlug],
+  );
+
+  // ── Budgets ────────────────────────────────────────────────────────────────
 
   const createBudget = useCallback(
     (name: string, config: BudgetConfig): string => {
@@ -180,6 +263,8 @@ export function useBudgets(projectSlug: string) {
     [projectSlug, queryClient],
   );
 
+  // ── Transactions ───────────────────────────────────────────────────────────
+
   const upsertTransaction = useCallback(
     (budgetId: string, tx: Omit<Transaction, "id"> & { id?: string }) => {
       const newTx: ServerTransaction = {
@@ -208,14 +293,6 @@ export function useBudgets(projectSlug: string) {
     [projectSlug, queryClient],
   );
 
-  const renameSpace = useCallback(
-    async (newSlug: string): Promise<string | null> => {
-      const result = await apiUpdateSpace(projectSlug, { slug: newSlug });
-      return result?.slug ?? null;
-    },
-    [projectSlug],
-  );
-
   const deleteTransaction = useCallback(
     (budgetId: string, txId: string) => {
       patch((prev) => ({
@@ -238,6 +315,11 @@ export function useBudgets(projectSlug: string) {
   return {
     index,
     syncing: isLoading,
+    accessDenied,
+    spaceIsPrivate,
+    spaceOwnerEmail,
+    spaceMembers,
+    isOwner,
     createBudget,
     deleteBudget,
     updateBudgetMeta,
@@ -246,5 +328,9 @@ export function useBudgets(projectSlug: string) {
     upsertTransaction,
     deleteTransaction,
     renameSpace,
+    claimSpace,
+    updateSpacePrivacy,
+    addMember,
+    removeMember,
   };
 }
