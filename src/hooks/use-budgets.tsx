@@ -1,8 +1,6 @@
 import { useMemo, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { customAlphabet } from "nanoid";
-
-const nanoid = customAlphabet("abcdefghijklmnopqrstuvwxyz0123456789");
 import {
   createSpace,
   createBudget as apiBudget,
@@ -15,6 +13,8 @@ import {
   type ServerBudget,
   type ServerTransaction,
 } from "../api";
+
+const nanoid = customAlphabet("abcdefghijklmnopqrstuvwxyz0123456789");
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -54,7 +54,6 @@ type SpaceData = {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-
 function spaceKey(projectSlug: string) {
   return ["space", projectSlug] as const;
 }
@@ -90,10 +89,7 @@ function persistSpace(projectSlug: string, space: SpaceData) {
       JSON.stringify(entries.map((e) => e.meta)),
     );
     entries.forEach((e) =>
-      localStorage.setItem(
-        entryKey(projectSlug, e.meta.id),
-        JSON.stringify(e),
-      ),
+      localStorage.setItem(entryKey(projectSlug, e.meta.id), JSON.stringify(e)),
     );
   } catch {}
 }
@@ -166,9 +162,8 @@ export function useBudgets(projectSlug: string) {
   );
 
   function patch(updater: (prev: SpaceData) => SpaceData) {
-    queryClient.setQueryData<SpaceData | null>(
-      spaceKey(projectSlug),
-      (prev) => (prev ? updater(prev) : prev),
+    queryClient.setQueryData<SpaceData | null>(spaceKey(projectSlug), (prev) =>
+      prev ? updater(prev) : prev,
     );
   }
 
@@ -222,7 +217,9 @@ export function useBudgets(projectSlug: string) {
       patch((prev) => ({
         ...prev,
         budgets: prev.budgets.map((b) =>
-          b.slug !== id ? b : { ...b, name: p.name ?? b.name, color: p.color ?? b.color },
+          b.slug !== id
+            ? b
+            : { ...b, name: p.name ?? b.name, color: p.color ?? b.color },
         ),
       }));
       apiUpdateBudget(projectSlug, id, p).then(invalidate);
@@ -268,12 +265,14 @@ export function useBudgets(projectSlug: string) {
         budgets: prev.budgets.map((b) => {
           if (b.slug !== budgetId) return b;
           const txs = tx.id
-            ? b.transactions.map((t) => (t.id === tx.id ? { ...newTx, budget_id: t.budget_id } : t))
+            ? b.transactions.map((t) =>
+                t.id === tx.id ? { ...newTx, budget_id: t.budget_id } : t,
+              )
             : [...b.transactions, { ...newTx, budget_id: b.id }];
           return { ...b, transactions: txs };
         }),
       }));
-      apiUpsertTx(projectSlug, budgetId, newTx).then(invalidate);
+      apiUpsertTx(projectSlug, budgetId, tx).then(invalidate);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [projectSlug, queryClient],
@@ -286,7 +285,10 @@ export function useBudgets(projectSlug: string) {
         budgets: prev.budgets.map((b) =>
           b.slug !== budgetId
             ? b
-            : { ...b, transactions: b.transactions.filter((t) => t.id !== txId) },
+            : {
+                ...b,
+                transactions: b.transactions.filter((t) => t.id !== txId),
+              },
         ),
       }));
       apiDeleteTx(projectSlug, budgetId, txId).then(invalidate);
