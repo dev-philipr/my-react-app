@@ -99,17 +99,21 @@ export function useBudgets(projectSlug: string) {
     spaceOwnerEmail === null ||
     (storedEmail !== null && spaceOwnerEmail === storedEmail);
 
-  const index = useMemo(
-    () => (space?.budgets ?? []).map((b) => serverBudgetToEntry(b).meta),
-    [space],
-  );
+  const { index, budgetEntryMap } = useMemo(() => {
+    const budgets = space?.budgets ?? [];
+    const map = new Map<string, BudgetEntry>();
+    const idx: BudgetMeta[] = [];
+    for (const b of budgets) {
+      const entry = serverBudgetToEntry(b);
+      map.set(b.slug, entry);
+      idx.push(entry.meta);
+    }
+    return { index: idx, budgetEntryMap: map };
+  }, [space]);
 
   const getBudgetEntry = useCallback(
-    (id: string): BudgetEntry | null => {
-      const b = space?.budgets.find((b) => b.slug === id) ?? null;
-      return b ? serverBudgetToEntry(b) : null;
-    },
-    [space],
+    (id: string): BudgetEntry | null => budgetEntryMap.get(id) ?? null,
+    [budgetEntryMap],
   );
 
   function patch(updater: (prev: SpaceData) => SpaceData) {
@@ -210,7 +214,7 @@ export function useBudgets(projectSlug: string) {
       return slug;
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [projectSlug, queryClient],
+    [projectSlug],
   );
 
   const deleteBudget = useCallback(
@@ -222,7 +226,7 @@ export function useBudgets(projectSlug: string) {
       apiDeleteBudget(projectSlug, id).then(invalidate);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [projectSlug, queryClient],
+    [projectSlug],
   );
 
   const updateBudgetMeta = useCallback(

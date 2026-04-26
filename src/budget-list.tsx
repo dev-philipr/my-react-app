@@ -855,7 +855,6 @@ function PrivacySettingsModal({
   const [saving, setSaving] = useState(false);
 
   const isOwner = ownerEmail === null || ownerEmail === currentUserEmail;
-  const unclaimed = ownerEmail === null;
 
   async function handleClaim() {
     const email = currentUserEmail || claimEmail.trim().toLowerCase();
@@ -906,14 +905,25 @@ function PrivacySettingsModal({
           <Stack gap={5}>
             {/* Owner */}
             <Box>
-              <Text fontSize="xs" fontWeight="semibold" color="fg.muted" textTransform="uppercase" letterSpacing="wider" mb={1.5}>
+              <Text
+                fontSize="xs"
+                fontWeight="semibold"
+                color="fg.muted"
+                textTransform="uppercase"
+                letterSpacing="wider"
+                mb={1.5}
+              >
                 Owner
               </Text>
               {ownerEmail ? (
-                <Text fontSize="sm" fontFamily="mono" color="fg">{ownerEmail}</Text>
+                <Text fontSize="sm" fontFamily="mono" color="fg">
+                  {ownerEmail}
+                </Text>
               ) : (
                 <Stack gap={2}>
-                  <Text fontSize="sm" color="fg.subtle">Unclaimed — set your email to claim this space.</Text>
+                  <Text fontSize="sm" color="fg.subtle">
+                    Unclaimed — set your email to claim this space.
+                  </Text>
                   {!currentUserEmail && (
                     <Input
                       size="sm"
@@ -932,7 +942,9 @@ function PrivacySettingsModal({
                     variant="outline"
                     borderRadius="lg"
                     onClick={handleClaim}
-                    disabled={saving || (!currentUserEmail && !claimEmail.trim())}
+                    disabled={
+                      saving || (!currentUserEmail && !claimEmail.trim())
+                    }
                     alignSelf="flex-start"
                   >
                     <Lock size={13} /> Claim ownership
@@ -951,7 +963,9 @@ function PrivacySettingsModal({
                     Private space
                   </Text>
                   <Text fontSize="xs" color="fg.muted">
-                    {isPrivate ? "Only allowed emails can access" : "Anyone with the link can access"}
+                    {isPrivate
+                      ? "Only allowed emails can access"
+                      : "Anyone with the link can access"}
                   </Text>
                 </Box>
                 <Switch
@@ -968,17 +982,38 @@ function PrivacySettingsModal({
               <>
                 <Separator />
                 <Box>
-                  <Text fontSize="xs" fontWeight="semibold" color="fg.muted" textTransform="uppercase" letterSpacing="wider" mb={3}>
+                  <Text
+                    fontSize="xs"
+                    fontWeight="semibold"
+                    color="fg.muted"
+                    textTransform="uppercase"
+                    letterSpacing="wider"
+                    mb={3}
+                  >
                     Allowed emails
                   </Text>
 
                   <Stack gap={2} mb={3}>
                     {members.length === 0 ? (
-                      <Text fontSize="sm" color="fg.subtle">No members added yet.</Text>
+                      <Text fontSize="sm" color="fg.subtle">
+                        No members added yet.
+                      </Text>
                     ) : (
                       members.map((email) => (
-                        <Flex key={email} align="center" justify="space-between" px={3} py={2} bg="bg.subtle" borderRadius="lg" borderWidth="1px" borderColor="border.subtle">
-                          <Text fontSize="sm" fontFamily="mono">{email}</Text>
+                        <Flex
+                          key={email}
+                          align="center"
+                          justify="space-between"
+                          px={3}
+                          py={2}
+                          bg="bg.subtle"
+                          borderRadius="lg"
+                          borderWidth="1px"
+                          borderColor="border.subtle"
+                        >
+                          <Text fontSize="sm" fontFamily="mono">
+                            {email}
+                          </Text>
                           <IconButton
                             size="xs"
                             variant="ghost"
@@ -1058,26 +1093,29 @@ export default function BudgetList({
   const [showPrivacy, setShowPrivacy] = useState(false);
   const [search, setSearch] = useState("");
 
+  const allEntries = useMemo(
+    () => index.map((m) => ({ meta: m, entry: getBudgetEntry(m.id) })),
+    [index, getBudgetEntry],
+  );
+
   const entries = useMemo(
     () =>
-      index
-        .map((m) => ({ meta: m, entry: getBudgetEntry(m.id) }))
-        .filter(
-          ({ meta }) =>
-            search.trim() === "" ||
+      search.trim() === ""
+        ? allEntries
+        : allEntries.filter(({ meta }) =>
             meta.name.toLowerCase().includes(search.toLowerCase()),
-        ),
-    [index, getBudgetEntry, search],
+          ),
+    [allEntries, search],
   );
 
   const totalBudgets = index.length;
-  const activeBudgets = index.filter((m) => {
-    const e = getBudgetEntry(m.id);
-    if (!e) return false;
+  const activeBudgets = allEntries.filter(({ entry }) => {
+    if (!entry) return false;
     try {
       const now = new Date();
       return (
-        now >= parseISO(e.config.rangeFrom) && now <= parseISO(e.config.rangeTo)
+        now >= parseISO(entry.config.rangeFrom) &&
+        now <= parseISO(entry.config.rangeTo)
       );
     } catch {
       return false;

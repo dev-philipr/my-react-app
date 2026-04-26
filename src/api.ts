@@ -1,4 +1,4 @@
-import type { BudgetConfig, BudgetEntry, BudgetMeta, Transaction } from "./hooks/use-budgets";
+import type { BudgetConfig, BudgetEntry, Transaction } from "./hooks/use-budgets";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -176,13 +176,6 @@ export async function deleteBudget(
   return res !== null;
 }
 
-export async function getBudget(
-  projectSlug: string,
-  budgetSlug: string,
-): Promise<ServerBudget | null> {
-  return api(`/api/spaces/${projectSlug}/budgets/${budgetSlug}`);
-}
-
 // ─── Transactions ─────────────────────────────────────────────────────────────
 
 export interface ServerTransaction {
@@ -224,26 +217,6 @@ export async function deleteTransaction(
   return res !== null;
 }
 
-// ─── Migration ────────────────────────────────────────────────────────────────
-
-export async function migrateToServer(
-  spaceSlug: string,
-  spaceName: string,
-  budgets: Array<{
-    slug: string;
-    name: string;
-    color: string;
-    config: BudgetConfig;
-    transactions: Transaction[];
-  }>,
-): Promise<boolean> {
-  const res = await api("/api/migrate", {
-    method: "POST",
-    body: JSON.stringify({ spaceSlug, spaceName, budgets }),
-  });
-  return res !== null;
-}
-
 // ─── Server → local type conversion ──────────────────────────────────────────
 
 export function serverBudgetToEntry(b: ServerBudget): BudgetEntry {
@@ -270,6 +243,3 @@ export function serverBudgetToEntry(b: ServerBudget): BudgetEntry {
   };
 }
 
-export function entryToMeta(entry: BudgetEntry): BudgetMeta {
-  return entry.meta;
-}

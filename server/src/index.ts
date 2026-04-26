@@ -15,6 +15,10 @@ type SpaceRow = {
   is_private: number;
 };
 
+type OwnerResult =
+  | { ok: true; ownerEmail: string | null }
+  | { ok: false; status: 403 | 404; error: string };
+
 const app = new Hono<{ Bindings: Bindings }>();
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -41,51 +45,24 @@ async function getBudgetId(
   return row?.id ?? null;
 }
 
-async function checkAccess(
+async function requireOwner(
   db: D1Database,
   projectSlug: string,
   email: string | null,
-): Promise<"ok" | "denied" | "not_found"> {
+): Promise<OwnerResult> {
   const space = await db
-    .prepare(
-      "SELECT owner_email, is_private FROM project_spaces WHERE slug = ?",
-    )
+    .prepare("SELECT owner_email FROM project_spaces WHERE slug = ?")
     .bind(projectSlug)
-    .first<Pick<SpaceRow, "owner_email" | "is_private">>();
-
-  if (!space) return "not_found";
-  if (!space.is_private) return "ok";
-  if (!email) return "denied";
-
-  const isOwner =
-    space.owner_email === null || space.owner_email === email;
-  if (isOwner) return "ok";
-
-  const member = await db
-    .prepare(
-      "SELECT 1 FROM space_members WHERE space_slug = ? AND email = ?",
-    )
-    .bind(projectSlug, email)
-    .first();
-  return member ? "ok" : "denied";
+    .first<Pick<SpaceRow, "owner_email">>();
+  if (!space) return { ok: false, status: 404, error: "Space not found" };
+  const isOwner = space.owner_email === null || space.owner_email === email;
+  if (!isOwner) return { ok: false, status: 403, error: "Forbidden" };
+  return { ok: true, ownerEmail: space.owner_email };
 }
 
-// ─── Legacy routes (kept for backwards compat) ────────────────────────────────
+// ─── Project Spaces ───────────────────────────────────────────────────────────
 
 app.get("/api/", (c) => c.json({ name: "Day Pocket API" }));
-
-app.get("/api/expenses", async (c) => {
-  try {
-    const result = await c.env.DB.prepare(
-      "SELECT * FROM expenses ORDER BY date DESC",
-    ).all();
-    return c.json({ expenses: result.results });
-  } catch {
-    return c.json({ expenses: [] });
-  }
-});
-
-// ─── Project Spaces ───────────────────────────────────────────────────────────
 
 app.post("/api/spaces", async (c) => {
   const body = await c.req.json<{ name?: string; slug?: string }>();
@@ -116,21 +93,30 @@ app.get("/api/spaces/:projectSlug", async (c) => {
   const { projectSlug } = c.req.param();
   const email = emailHeader(c);
 
-  const access = await checkAccess(c.env.DB, projectSlug, email);
-  if (access === "not_found") return c.json({ error: "Space not found" }, 404);
-  if (access === "denied") return c.json({ error: "Access denied" }, 403);
-
   const space = await c.env.DB.prepare(
     "SELECT * FROM project_spaces WHERE slug = ?",
   )
     .bind(projectSlug)
     .first<SpaceRow>();
 
-  // Only return member list to the owner
+  if (!space) return c.json({ error: "Space not found" }, 404);
+
+  const isOwner = space.owner_email === null || space.owner_email === email;
+
+  if (space.is_private) {
+    if (!email) return c.json({ error: "Access denied" }, 403);
+    if (!isOwner) {
+      const member = await c.env.DB.prepare(
+        "SELECT 1 FROM space_members WHERE space_slug = ? AND email = ?",
+      )
+        .bind(projectSlug, email)
+        .first();
+      if (!member) return c.json({ error: "Access denied" }, 403);
+    }
+  }
+
   let members: string[] = [];
-  const isOwner =
-    space!.owner_email === null || space!.owner_email === email;
-  if (isOwner && space!.is_private) {
+  if (isOwner && space.is_private) {
     const rows = await c.env.DB.prepare(
       "SELECT email FROM space_members WHERE space_slug = ? ORDER BY email ASC",
     )
@@ -168,10 +154,10 @@ app.get("/api/spaces/:projectSlug", async (c) => {
   }));
 
   return c.json({
-    slug: space!.slug,
-    name: space!.name,
-    owner_email: space!.owner_email,
-    is_private: Boolean(space!.is_private),
+    slug: space.slug,
+    name: space.name,
+    owner_email: space.owner_email,
+    is_private: Boolean(space.is_private),
     members,
     budgets,
   });
@@ -221,20 +207,12 @@ app.put("/api/spaces/:projectSlug/settings", async (c) => {
   const email = emailHeader(c);
   if (!email) return c.json({ error: "X-User-Email required" }, 401);
 
+  const check = await requireOwner(c.env.DB, projectSlug, email);
+  if (!check.ok) return c.json({ error: check.error }, check.status);
+
   const body = await c.req.json<{ is_private?: boolean }>();
 
-  const space = await c.env.DB.prepare(
-    "SELECT owner_email FROM project_spaces WHERE slug = ?",
-  )
-    .bind(projectSlug)
-    .first<Pick<SpaceRow, "owner_email">>();
-  if (!space) return c.json({ error: "Space not found" }, 404);
-
-  const isOwner = space.owner_email === null || space.owner_email === email;
-  if (!isOwner) return c.json({ error: "Forbidden" }, 403);
-
-  // Claim ownership on first settings write if unclaimed
-  if (space.owner_email === null) {
+  if (check.ownerEmail === null) {
     await c.env.DB.prepare(
       "UPDATE project_spaces SET owner_email = ? WHERE slug = ?",
     )
@@ -255,29 +233,6 @@ app.put("/api/spaces/:projectSlug/settings", async (c) => {
 
 // ─── Space members — owner only ───────────────────────────────────────────────
 
-app.get("/api/spaces/:projectSlug/members", async (c) => {
-  const { projectSlug } = c.req.param();
-  const email = emailHeader(c);
-
-  const space = await c.env.DB.prepare(
-    "SELECT owner_email FROM project_spaces WHERE slug = ?",
-  )
-    .bind(projectSlug)
-    .first<Pick<SpaceRow, "owner_email">>();
-  if (!space) return c.json({ error: "Space not found" }, 404);
-
-  const isOwner = space.owner_email === null || space.owner_email === email;
-  if (!isOwner) return c.json({ error: "Forbidden" }, 403);
-
-  const rows = await c.env.DB.prepare(
-    "SELECT email FROM space_members WHERE space_slug = ? ORDER BY email ASC",
-  )
-    .bind(projectSlug)
-    .all<{ email: string }>();
-
-  return c.json({ members: rows.results.map((r) => r.email) });
-});
-
 app.post("/api/spaces/:projectSlug/members", async (c) => {
   const { projectSlug } = c.req.param();
   const email = emailHeader(c);
@@ -287,15 +242,8 @@ app.post("/api/spaces/:projectSlug/members", async (c) => {
   if (!email || !memberEmail)
     return c.json({ error: "email required" }, 400);
 
-  const space = await c.env.DB.prepare(
-    "SELECT owner_email FROM project_spaces WHERE slug = ?",
-  )
-    .bind(projectSlug)
-    .first<Pick<SpaceRow, "owner_email">>();
-  if (!space) return c.json({ error: "Space not found" }, 404);
-
-  const isOwner = space.owner_email === null || space.owner_email === email;
-  if (!isOwner) return c.json({ error: "Forbidden" }, 403);
+  const check = await requireOwner(c.env.DB, projectSlug, email);
+  if (!check.ok) return c.json({ error: check.error }, check.status);
 
   await c.env.DB.prepare(
     "INSERT OR IGNORE INTO space_members (space_slug, email) VALUES (?, ?)",
@@ -310,15 +258,8 @@ app.delete("/api/spaces/:projectSlug/members/:memberEmail", async (c) => {
   const { projectSlug, memberEmail } = c.req.param();
   const email = emailHeader(c);
 
-  const space = await c.env.DB.prepare(
-    "SELECT owner_email FROM project_spaces WHERE slug = ?",
-  )
-    .bind(projectSlug)
-    .first<Pick<SpaceRow, "owner_email">>();
-  if (!space) return c.json({ error: "Space not found" }, 404);
-
-  const isOwner = space.owner_email === null || space.owner_email === email;
-  if (!isOwner) return c.json({ error: "Forbidden" }, 403);
+  const check = await requireOwner(c.env.DB, projectSlug, email);
+  if (!check.ok) return c.json({ error: check.error }, check.status);
 
   await c.env.DB.prepare(
     "DELETE FROM space_members WHERE space_slug = ? AND email = ?",
@@ -537,73 +478,5 @@ app.delete(
     return c.json({ success: true });
   },
 );
-
-// ─── Migration (localStorage → DB) ───────────────────────────────────────────
-
-app.post("/api/migrate", async (c) => {
-  const body = await c.req.json<{
-    spaceSlug: string;
-    spaceName?: string;
-    budgets?: Array<{
-      slug: string;
-      name: string;
-      color?: string;
-      config: {
-        rangeFrom: string;
-        rangeTo: string;
-        budget: number;
-        dailyBudget: number;
-      };
-      transactions?: Array<{
-        id: string;
-        date: string;
-        name?: string;
-        credit: number;
-        debit: number;
-      }>;
-    }>;
-  }>();
-
-  if (!body.spaceSlug) return c.json({ error: "spaceSlug required" }, 400);
-
-  await c.env.DB.prepare(
-    "INSERT OR IGNORE INTO project_spaces (slug, name) VALUES (?, ?)",
-  )
-    .bind(body.spaceSlug, body.spaceName ?? "My Space")
-    .run();
-
-  for (const b of body.budgets ?? []) {
-    await c.env.DB.prepare(
-      `INSERT OR IGNORE INTO budgets
-         (slug, project_slug, name, range_from, range_to, budget, daily_budget, color)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    )
-      .bind(
-        b.slug,
-        body.spaceSlug,
-        b.name,
-        b.config.rangeFrom,
-        b.config.rangeTo,
-        b.config.budget,
-        b.config.dailyBudget,
-        b.color ?? "green",
-      )
-      .run();
-
-    const budgetId = await getBudgetId(c.env.DB, body.spaceSlug, b.slug);
-    if (budgetId === null) continue;
-
-    for (const tx of b.transactions ?? []) {
-      await c.env.DB.prepare(
-        `INSERT OR IGNORE INTO transactions (id, budget_id, date, name, credit, debit)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-      )
-        .bind(tx.id, budgetId, tx.date, tx.name ?? null, tx.credit, tx.debit)
-        .run();
-    }
-  }
-
-  return c.json({ success: true });
-});
 
 export default app;
