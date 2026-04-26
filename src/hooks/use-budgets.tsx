@@ -59,74 +59,6 @@ function spaceKey(projectSlug: string) {
   return ["space", projectSlug] as const;
 }
 
-// ─── localStorage helpers (used for initialData only) ─────────────────────────
-
-const indexKey = (p: string) => `dp_index_${p}`;
-const entryKey = (p: string, s: string) => `dp_entry_${p}_${s}`;
-
-function loadIndex(projectSlug: string): BudgetMeta[] {
-  try {
-    const raw = localStorage.getItem(indexKey(projectSlug));
-    return raw ? (JSON.parse(raw) as BudgetMeta[]) : [];
-  } catch {
-    return [];
-  }
-}
-
-function loadEntry(projectSlug: string, slug: string): BudgetEntry | null {
-  try {
-    const raw = localStorage.getItem(entryKey(projectSlug, slug));
-    return raw ? (JSON.parse(raw) as BudgetEntry) : null;
-  } catch {
-    return null;
-  }
-}
-
-function persistSpace(projectSlug: string, space: SpaceData) {
-  const entries = space.budgets.map(serverBudgetToEntry);
-  try {
-    localStorage.setItem(
-      indexKey(projectSlug),
-      JSON.stringify(entries.map((e) => e.meta)),
-    );
-    entries.forEach((e) =>
-      localStorage.setItem(entryKey(projectSlug, e.meta.id), JSON.stringify(e)),
-    );
-  } catch {}
-}
-
-function localInitialData(projectSlug: string): SpaceData | undefined {
-  const idx = loadIndex(projectSlug);
-  if (!idx.length) return undefined;
-  const budgets: ServerBudget[] = idx.flatMap((meta) => {
-    const entry = loadEntry(projectSlug, meta.id);
-    if (!entry) return [];
-    return [
-      {
-        id: 0,
-        slug: meta.id,
-        project_slug: projectSlug,
-        name: meta.name,
-        range_from: entry.config.rangeFrom,
-        range_to: entry.config.rangeTo,
-        budget: entry.config.budget,
-        daily_budget: entry.config.dailyBudget,
-        color: meta.color,
-        created_at: meta.createdAt,
-        transactions: entry.transactions.map((tx) => ({
-          id: tx.id,
-          budget_id: 0,
-          date: tx.date,
-          name: tx.name,
-          credit: tx.credit,
-          debit: tx.debit,
-        })),
-      },
-    ];
-  });
-  return { slug: projectSlug, name: "My Space", budgets };
-}
-
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
 export function useBudgets(projectSlug: string) {
@@ -140,11 +72,8 @@ export function useBudgets(projectSlug: string) {
         await createSpace(projectSlug, projectSlug);
         result = await getSpace(projectSlug);
       }
-      if (result) persistSpace(projectSlug, result);
       return result;
     },
-    initialData: () => localInitialData(projectSlug),
-    initialDataUpdatedAt: 0, // treat localStorage data as immediately stale → always refetches
     staleTime: 30_000,
   });
 

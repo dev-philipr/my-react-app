@@ -874,10 +874,7 @@ export default function BudgetList({
                     projectSlug={projectSlug}
                     onRename={async (newSlug) => {
                       const result = await renameSpace(newSlug);
-                      if (result) {
-                        localStorage.setItem("dp_space_slug", result);
-                        navigate(`/${result}`);
-                      }
+                      if (result) navigate(`/${result}`);
                     }}
                   />
                 </Flex>
