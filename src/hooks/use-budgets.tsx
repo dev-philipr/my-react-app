@@ -1,12 +1,27 @@
-import { useState, useCallback, useEffect } from "react";
+import { useMemo, useCallback } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { customAlphabet } from "nanoid";
+
+const nanoid = customAlphabet("abcdefghijklmnopqrstuvwxyz0123456789");
+import {
+  createBudget as apiBudget,
+  updateBudget as apiUpdateBudget,
+  deleteBudget as apiDeleteBudget,
+  upsertTransaction as apiUpsertTx,
+  deleteTransaction as apiDeleteTx,
+  getSpace,
+  serverBudgetToEntry,
+  type ServerBudget,
+  type ServerTransaction,
+} from "../api";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface BudgetMeta {
   id: string;
   name: string;
-  createdAt: string; // ISO
-  color: string; // e.g. "green", "blue", "green"
+  createdAt: string;
+  color: string;
 }
 
 export interface BudgetConfig {
@@ -30,173 +45,263 @@ export interface BudgetEntry {
   transactions: Transaction[];
 }
 
-// ─── Storage keys ─────────────────────────────────────────────────────────────
+type SpaceData = {
+  slug: string;
+  name: string;
+  budgets: ServerBudget[];
+};
 
-const KEYS = {
-  INDEX: "budgets_index_v1",
-  ENTRY: (id: string) => `budget_entry_${id}_v1`,
-  // Legacy keys from the original single-budget app
-  LEGACY_CONFIG: "budget_config_v1",
-  LEGACY_TRANSACTIONS: "budget_transactions_v1",
-} as const;
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-
-function genId(): string {
-  return Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+function slugify(str: string): string {
+  return (
+    str
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 40) || "budget"
+  );
 }
 
-// ─── Migration: single budget → multi ────────────────────────────────────────
-
-function migrateLegacy(): BudgetEntry | null {
-  try {
-    const rawConfig = localStorage.getItem(KEYS.LEGACY_CONFIG);
-    if (!rawConfig) return null;
-    const config = JSON.parse(rawConfig) as BudgetConfig;
-    const rawTxs = localStorage.getItem(KEYS.LEGACY_TRANSACTIONS);
-    const transactions: Transaction[] = rawTxs ? JSON.parse(rawTxs) : [];
-
-    const entry: BudgetEntry = {
-      meta: {
-        id: "legacy",
-        name: "My Budget",
-        createdAt: new Date().toISOString(),
-        color: "green",
-      },
-      config,
-      transactions,
-    };
-    return entry;
-  } catch {
-    return null;
-  }
+function spaceKey(projectSlug: string) {
+  return ["space", projectSlug] as const;
 }
 
-// ─── Load / Save helpers ──────────────────────────────────────────────────────
+// ─── localStorage helpers (used for initialData only) ─────────────────────────
 
-function loadIndex(): BudgetMeta[] {
+const indexKey = (p: string) => `dp_index_${p}`;
+const entryKey = (p: string, s: string) => `dp_entry_${p}_${s}`;
+
+function loadIndex(projectSlug: string): BudgetMeta[] {
   try {
-    const raw = localStorage.getItem(KEYS.INDEX);
-    if (raw) return JSON.parse(raw) as BudgetMeta[];
-
-    // First run — check for legacy data
-    const legacy = migrateLegacy();
-    if (legacy) {
-      const index = [legacy.meta];
-      localStorage.setItem(KEYS.INDEX, JSON.stringify(index));
-      localStorage.setItem(KEYS.ENTRY(legacy.meta.id), JSON.stringify(legacy));
-      return index;
-    }
-
-    return [];
+    const raw = localStorage.getItem(indexKey(projectSlug));
+    return raw ? (JSON.parse(raw) as BudgetMeta[]) : [];
   } catch {
     return [];
   }
 }
 
-function loadEntry(id: string): BudgetEntry | null {
+function loadEntry(projectSlug: string, slug: string): BudgetEntry | null {
   try {
-    const raw = localStorage.getItem(KEYS.ENTRY(id));
+    const raw = localStorage.getItem(entryKey(projectSlug, slug));
     return raw ? (JSON.parse(raw) as BudgetEntry) : null;
   } catch {
     return null;
   }
 }
 
-function saveIndex(index: BudgetMeta[]): void {
-  localStorage.setItem(KEYS.INDEX, JSON.stringify(index));
+function persistSpace(projectSlug: string, space: SpaceData) {
+  const entries = space.budgets.map(serverBudgetToEntry);
+  try {
+    localStorage.setItem(
+      indexKey(projectSlug),
+      JSON.stringify(entries.map((e) => e.meta)),
+    );
+    entries.forEach((e) =>
+      localStorage.setItem(
+        entryKey(projectSlug, e.meta.id),
+        JSON.stringify(e),
+      ),
+    );
+  } catch {}
 }
 
-function saveEntry(entry: BudgetEntry): void {
-  localStorage.setItem(KEYS.ENTRY(entry.meta.id), JSON.stringify(entry));
-}
-
-function deleteEntry(id: string): void {
-  localStorage.removeItem(KEYS.ENTRY(id));
+function localInitialData(projectSlug: string): SpaceData | undefined {
+  const idx = loadIndex(projectSlug);
+  if (!idx.length) return undefined;
+  const budgets: ServerBudget[] = idx.flatMap((meta) => {
+    const entry = loadEntry(projectSlug, meta.id);
+    if (!entry) return [];
+    return [
+      {
+        id: 0,
+        slug: meta.id,
+        project_slug: projectSlug,
+        name: meta.name,
+        range_from: entry.config.rangeFrom,
+        range_to: entry.config.rangeTo,
+        budget: entry.config.budget,
+        daily_budget: entry.config.dailyBudget,
+        color: meta.color,
+        created_at: meta.createdAt,
+        transactions: entry.transactions.map((tx) => ({
+          id: tx.id,
+          budget_id: 0,
+          date: tx.date,
+          name: tx.name,
+          credit: tx.credit,
+          debit: tx.debit,
+        })),
+      },
+    ];
+  });
+  return { slug: projectSlug, name: "My Space", budgets };
 }
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
-export function useBudgets() {
-  const [index, setIndex] = useState<BudgetMeta[]>(loadIndex);
+export function useBudgets(projectSlug: string) {
+  const queryClient = useQueryClient();
 
-  // Persist index on change
-  useEffect(() => {
-    saveIndex(index);
-  }, [index]);
+  const { data: space, isLoading } = useQuery<SpaceData | null>({
+    queryKey: spaceKey(projectSlug),
+    queryFn: async () => {
+      const result = await getSpace(projectSlug);
+      if (result) persistSpace(projectSlug, result);
+      return result;
+    },
+    initialData: () => localInitialData(projectSlug),
+    initialDataUpdatedAt: 0, // treat localStorage data as immediately stale → always refetches
+    staleTime: 30_000,
+  });
+
+  const index = useMemo(
+    () => (space?.budgets ?? []).map((b) => serverBudgetToEntry(b).meta),
+    [space],
+  );
+
+  // Reads from the query cache — re-evaluates whenever space updates
+  const getBudgetEntry = useCallback(
+    (id: string): BudgetEntry | null => {
+      const b = space?.budgets.find((b) => b.slug === id) ?? null;
+      return b ? serverBudgetToEntry(b) : null;
+    },
+    [space],
+  );
+
+  function patch(updater: (prev: SpaceData) => SpaceData) {
+    queryClient.setQueryData<SpaceData | null>(
+      spaceKey(projectSlug),
+      (prev) => (prev ? updater(prev) : prev),
+    );
+  }
+
+  function invalidate() {
+    queryClient.invalidateQueries({ queryKey: spaceKey(projectSlug) });
+  }
 
   const createBudget = useCallback(
     (name: string, config: BudgetConfig): string => {
-      const id = genId();
-      const meta: BudgetMeta = {
-        id,
-        name,
-        createdAt: new Date().toISOString(),
-        color: "green",
-      };
-      const entry: BudgetEntry = { meta, config, transactions: [] };
-      saveEntry(entry);
-      setIndex((prev) => [...prev, meta]);
-      return id;
+      const slug = `${slugify(name)}-${nanoid(8)}`;
+      patch((prev) => ({
+        ...prev,
+        budgets: [
+          ...prev.budgets,
+          {
+            id: 0,
+            slug,
+            project_slug: projectSlug,
+            name,
+            range_from: config.rangeFrom,
+            range_to: config.rangeTo,
+            budget: config.budget,
+            daily_budget: config.dailyBudget,
+            color: "green",
+            created_at: new Date().toISOString(),
+            transactions: [],
+          },
+        ],
+      }));
+      apiBudget(projectSlug, slug, name, config, "green").then(invalidate);
+      return slug;
     },
-    [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [projectSlug, queryClient],
   );
 
-  const deleteBudget = useCallback((id: string) => {
-    deleteEntry(id);
-    setIndex((prev) => prev.filter((m) => m.id !== id));
-  }, []);
+  const deleteBudget = useCallback(
+    (id: string) => {
+      patch((prev) => ({
+        ...prev,
+        budgets: prev.budgets.filter((b) => b.slug !== id),
+      }));
+      apiDeleteBudget(projectSlug, id).then(invalidate);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [projectSlug, queryClient],
+  );
 
   const updateBudgetMeta = useCallback(
-    (id: string, patch: Partial<Pick<BudgetMeta, "name" | "color">>) => {
-      setIndex((prev) =>
-        prev.map((m) => (m.id === id ? { ...m, ...patch } : m)),
-      );
-      const entry = loadEntry(id);
-      if (entry) {
-        saveEntry({ ...entry, meta: { ...entry.meta, ...patch } });
-      }
+    (id: string, p: Partial<Pick<BudgetMeta, "name" | "color">>) => {
+      patch((prev) => ({
+        ...prev,
+        budgets: prev.budgets.map((b) =>
+          b.slug !== id ? b : { ...b, name: p.name ?? b.name, color: p.color ?? b.color },
+        ),
+      }));
+      apiUpdateBudget(projectSlug, id, p).then(invalidate);
     },
-    [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [projectSlug, queryClient],
   );
 
-  const getBudgetEntry = useCallback((id: string): BudgetEntry | null => {
-    return loadEntry(id);
-  }, []);
-
-  const updateBudgetConfig = useCallback((id: string, config: BudgetConfig) => {
-    const entry = loadEntry(id);
-    if (!entry) return;
-    const updated = { ...entry, config };
-    saveEntry(updated);
-  }, []);
+  const updateBudgetConfig = useCallback(
+    (id: string, config: BudgetConfig) => {
+      patch((prev) => ({
+        ...prev,
+        budgets: prev.budgets.map((b) =>
+          b.slug !== id
+            ? b
+            : {
+                ...b,
+                range_from: config.rangeFrom,
+                range_to: config.rangeTo,
+                budget: config.budget,
+                daily_budget: config.dailyBudget,
+              },
+        ),
+      }));
+      apiUpdateBudget(projectSlug, id, config).then(invalidate);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [projectSlug, queryClient],
+  );
 
   const upsertTransaction = useCallback(
     (budgetId: string, tx: Omit<Transaction, "id"> & { id?: string }) => {
-      const entry = loadEntry(budgetId);
-      if (!entry) return;
-      const newTx: Transaction = { ...tx, id: tx.id ?? genId() };
-      const updated = {
-        ...entry,
-        transactions: tx.id
-          ? entry.transactions.map((t) => (t.id === tx.id ? newTx : t))
-          : [...entry.transactions, newTx],
+      const newTx: ServerTransaction = {
+        id: tx.id ?? nanoid(),
+        budget_id: 0,
+        date: tx.date,
+        name: tx.name,
+        credit: tx.credit,
+        debit: tx.debit,
       };
-      saveEntry(updated);
+      patch((prev) => ({
+        ...prev,
+        budgets: prev.budgets.map((b) => {
+          if (b.slug !== budgetId) return b;
+          const txs = tx.id
+            ? b.transactions.map((t) => (t.id === tx.id ? { ...newTx, budget_id: t.budget_id } : t))
+            : [...b.transactions, { ...newTx, budget_id: b.id }];
+          return { ...b, transactions: txs };
+        }),
+      }));
+      apiUpsertTx(projectSlug, budgetId, newTx).then(invalidate);
     },
-    [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [projectSlug, queryClient],
   );
 
-  const deleteTransaction = useCallback((budgetId: string, txId: string) => {
-    const entry = loadEntry(budgetId);
-    if (!entry) return;
-    saveEntry({
-      ...entry,
-      transactions: entry.transactions.filter((t) => t.id !== txId),
-    });
-  }, []);
+  const deleteTransaction = useCallback(
+    (budgetId: string, txId: string) => {
+      patch((prev) => ({
+        ...prev,
+        budgets: prev.budgets.map((b) =>
+          b.slug !== budgetId
+            ? b
+            : { ...b, transactions: b.transactions.filter((t) => t.id !== txId) },
+        ),
+      }));
+      apiDeleteTx(projectSlug, budgetId, txId).then(invalidate);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [projectSlug, queryClient],
+  );
 
   return {
     index,
+    syncing: isLoading,
     createBudget,
     deleteBudget,
     updateBudgetMeta,

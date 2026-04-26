@@ -118,6 +118,7 @@ interface QuickAddRowProps {
 }
 
 interface BudgetDetailProps {
+  syncing: boolean;
   getBudgetEntry: (id: string) => BudgetEntry | null;
   updateBudgetMeta: (
     id: string,
@@ -1383,23 +1384,21 @@ export function MethodDrawer() {
 // ─── BudgetDetail page ────────────────────────────────────────────────────────
 
 export default function BudgetDetail({
+  syncing,
   getBudgetEntry,
   updateBudgetMeta,
   updateBudgetConfig,
   upsertTransaction,
   deleteTransaction,
 }: BudgetDetailProps) {
-  const { id } = useParams<{ id: string }>();
+  const { projectSlug, budgetSlug } = useParams<{ projectSlug: string; budgetSlug: string }>();
+  const id = budgetSlug;
   const navigate = useNavigate();
-
-  const [tick, setTick] = useState(0);
-  const bump = useCallback(() => setTick((t) => t + 1), []);
 
   const entry = useMemo(() => {
     if (!id) return null;
     return getBudgetEntry(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, getBudgetEntry, tick]);
+  }, [id, getBudgetEntry]);
 
   const [showConfig, setShowConfig] = useState(false);
   const [showForm, setShowForm] = useState(false);
@@ -1415,18 +1414,15 @@ export default function BudgetDetail({
     if (!id || !draftName.trim()) return;
     updateBudgetMeta(id, { name: draftName.trim() });
     setEditingName(false);
-    bump();
-  }, [id, draftName, updateBudgetMeta, bump]);
-
+  }, [id, draftName, updateBudgetMeta]);
 
   const handleSaveConfig = useCallback(
     (c: BudgetConfig) => {
       if (!id) return;
       updateBudgetConfig(id, c);
       setShowConfig(false);
-      bump();
     },
-    [id, updateBudgetConfig, bump],
+    [id, updateBudgetConfig],
   );
 
   const handleSaveTx = useCallback(
@@ -1434,18 +1430,16 @@ export default function BudgetDetail({
       if (!id) return;
       upsertTransaction(id, data);
       setShowForm(false);
-      bump();
     },
-    [id, upsertTransaction, bump],
+    [id, upsertTransaction],
   );
 
   const handleDelete = useCallback(
     (txId: string) => {
       if (!id) return;
       deleteTransaction(id, txId);
-      bump();
     },
-    [id, deleteTransaction, bump],
+    [id, deleteTransaction],
   );
 
   if (!entry) {
@@ -1457,17 +1451,21 @@ export default function BudgetDetail({
         alignItems="center"
         justifyContent="center"
       >
-        <Stack align="center" gap={4}>
-          <Text fontSize="4xl">🔍</Text>
-          <Text color="fg.muted">Budget not found.</Text>
-          <Button
-            colorPalette="green"
-            borderRadius="xl"
-            onClick={() => navigate("/")}
-          >
-            Back to budgets
-          </Button>
-        </Stack>
+        {syncing ? (
+          <Text color="fg.muted" fontSize="sm">Loading…</Text>
+        ) : (
+          <Stack align="center" gap={4}>
+            <Text fontSize="4xl">🔍</Text>
+            <Text color="fg.muted">Budget not found.</Text>
+            <Button
+              colorPalette="green"
+              borderRadius="xl"
+              onClick={() => navigate(`/${projectSlug}`)}
+            >
+              Back to budgets
+            </Button>
+          </Stack>
+        )}
       </Box>
     );
   }
@@ -1516,7 +1514,7 @@ export default function BudgetDetail({
                   variant="ghost"
                   borderRadius="lg"
                   color="fg.muted"
-                  onClick={() => navigate("/")}
+                  onClick={() => navigate(`/${projectSlug}`)}
                   px={2}
                 >
                   <ArrowLeft size={13} />

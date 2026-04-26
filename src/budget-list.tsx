@@ -39,6 +39,7 @@ import { useBudget } from "./hooks/use-budget";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface BudgetListProps {
+  projectSlug: string;
   index: BudgetMeta[];
   getBudgetEntry: (id: string) => BudgetEntry | null;
   createBudget: (name: string, config: BudgetConfig) => string;
@@ -688,6 +689,7 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
 // ─── BudgetList page ──────────────────────────────────────────────────────────
 
 export default function BudgetList({
+  projectSlug,
   index,
   getBudgetEntry,
   createBudget,
@@ -726,7 +728,7 @@ export default function BudgetList({
   function handleCreate(name: string, config: BudgetConfig) {
     const id = createBudget(name, config);
     setShowCreate(false);
-    navigate(`/budget/${id}`);
+    navigate(`/${projectSlug}/${id}`);
   }
 
   return (
@@ -865,7 +867,7 @@ export default function BudgetList({
                     key={meta.id}
                     meta={meta}
                     entry={entry}
-                    onOpen={() => navigate(`/budget/${meta.id}`)}
+                    onOpen={() => navigate(`/${projectSlug}/${meta.id}`)}
                     onDelete={() => deleteBudget(meta.id)}
                   />
                 ))}
