@@ -4,6 +4,7 @@ import { customAlphabet } from "nanoid";
 
 const nanoid = customAlphabet("abcdefghijklmnopqrstuvwxyz0123456789");
 import {
+  createSpace,
   createBudget as apiBudget,
   updateBudget as apiUpdateBudget,
   deleteBudget as apiDeleteBudget,
@@ -146,7 +147,11 @@ export function useBudgets(projectSlug: string) {
   const { data: space, isLoading } = useQuery<SpaceData | null>({
     queryKey: spaceKey(projectSlug),
     queryFn: async () => {
-      const result = await getSpace(projectSlug);
+      let result = await getSpace(projectSlug);
+      if (!result) {
+        await createSpace(projectSlug, projectSlug);
+        result = await getSpace(projectSlug);
+      }
       if (result) persistSpace(projectSlug, result);
       return result;
     },
