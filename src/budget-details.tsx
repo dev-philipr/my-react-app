@@ -1,6 +1,7 @@
 import {
   AccordionItem,
   AccordionItemContent,
+  AccordionItemIndicator,
   AccordionItemTrigger,
   AccordionRoot,
   Badge,
@@ -27,10 +28,10 @@ import {
   InputGroup,
   Portal,
   Separator,
+  Spinner,
   Stack,
   Text,
 } from "@chakra-ui/react";
-import { UTCDate } from "@date-fns/utc";
 import { format, parseISO } from "date-fns";
 import {
   ArrowLeft,
@@ -49,7 +50,7 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import { useCallback, useId, useMemo, useState } from "react";
+import { useCallback, useId, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useColorMode } from "./components/ui/color-mode";
 import { useBudget } from "./hooks/use-budget";
@@ -67,6 +68,7 @@ interface StatTileProps {
   value: number;
   isPositive?: boolean;
   sub?: string;
+  onClick?: () => void;
 }
 
 interface BudgetBarProps {
@@ -103,10 +105,15 @@ interface EventCardProps {
   onEdit: (tx: Omit<Transaction, "id"> & { id?: string }) => void;
   onDelete: (id: string) => void;
   onQuickSave: (tx: Omit<Transaction, "id"> & { id?: string }) => void;
+  containerRef?: React.RefObject<HTMLDivElement | null>;
 }
 
-interface EventRowProps extends Omit<EventCardProps, "onQuickSave"> {
+interface EventRowProps extends Omit<
+  EventCardProps,
+  "onQuickSave" | "containerRef"
+> {
   isLast: boolean;
+  containerRef?: React.RefObject<HTMLDivElement | null>;
 }
 
 interface QuickAddRowProps {
@@ -180,7 +187,7 @@ function ColorModeToggle() {
 
 // ─── StatTile ─────────────────────────────────────────────────────────────────
 
-function StatTile({ label, value, isPositive, sub }: StatTileProps) {
+function StatTile({ label, value, isPositive, sub, onClick }: StatTileProps) {
   const numColor =
     isPositive === undefined ? "fg" : isPositive ? "green.500" : "red.500";
   const val = value.toFixed(2);
@@ -196,6 +203,8 @@ function StatTile({ label, value, isPositive, sub }: StatTileProps) {
       minW="150px"
       _hover={{ borderColor: "border.emphasized", shadow: "sm" }}
       transition="all 0.2s"
+      onClick={onClick}
+      cursor={onClick ? "pointer" : undefined}
     >
       <Text
         fontSize="2xs"
@@ -437,7 +446,11 @@ function TransactionForm({
   );
   const [name, setName] = useState<string>(initial?.name ?? "");
   const [type, setType] = useState<"debit" | "credit">(
-    initial ? (initial.credit != null && initial.credit > 0 ? "credit" : "debit") : "debit",
+    initial
+      ? initial.credit != null && initial.credit > 0
+        ? "credit"
+        : "debit"
+      : "debit",
   );
   const [amount, setAmount] = useState<string>(
     initial
@@ -568,7 +581,11 @@ function TransactionForm({
           <Input
             size="sm"
             borderRadius="lg"
-            placeholder={type === "debit" ? "e.g. Groceries, Coffee…" : "e.g. Salary, Refund…"}
+            placeholder={
+              type === "debit"
+                ? "e.g. Groceries, Coffee…"
+                : "e.g. Salary, Refund…"
+            }
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
@@ -692,7 +709,9 @@ function QuickAddRow({
         <Input
           size="sm"
           borderRadius="lg"
-          placeholder={type === "debit" ? "Expense (optional)" : "Income (optional)"}
+          placeholder={
+            type === "debit" ? "Expense (optional)" : "Income (optional)"
+          }
           value={name}
           flex="1"
           onChange={(e) => setName(e.target.value)}
@@ -791,14 +810,6 @@ function TxRow({ tx, onEdit, onDelete }: TxRowProps) {
         >
           {nameText}
         </Text>
-        <Text
-          fontSize="xs"
-          color="fg.muted"
-          fontVariantNumeric="tabular-nums"
-          flexShrink={0}
-        >
-          {format(new UTCDate(tx.date), "MMM dd")}
-        </Text>
         {tx.credit > 0 && (
           <Badge
             colorPalette="green"
@@ -863,18 +874,23 @@ function EventCard({
   onEdit,
   onDelete,
   onQuickSave,
+  containerRef,
 }: EventCardProps) {
   const isUp = endBalance >= 0;
   const hasTransactions = transactions.length > 0;
   const dateStr = format(date, "yyyy-MM-dd");
+  const isToday = dateStr === format(new Date(), "yyyy-MM-dd");
   const [quickAdd, setQuickAdd] = useState(false);
 
   return (
     <Box
+      ref={containerRef}
       bg="bg.subtle"
       borderWidth="1px"
-      borderColor="border.subtle"
+      borderColor={!isToday ? "border.subtle" : "yellow.subtle"}
       borderRadius="2xl"
+      shadow={isToday ? "lg" : "initial"}
+      shadowColor="yellow.subtle"
       overflow="hidden"
       _hover={{ borderColor: "border.emphasized", shadow: "sm" }}
       transition="all 0.2s"
@@ -905,14 +921,19 @@ function EventCard({
                     color="var(--chakra-colors-red-400)"
                   />
                 )}
-                <Text
-                  fontSize="sm"
-                  fontWeight="bold"
-                  color="fg"
-                  letterSpacing="tight"
-                >
-                  {format(date, "MMM dd, yyyy")}
-                </Text>
+                <Flex flexDir="row" gap="1" alignItems="end">
+                  <Text
+                    fontSize="sm"
+                    fontWeight="bold"
+                    color="fg"
+                    letterSpacing="tight"
+                  >
+                    {format(date, "MMM dd, yyyy")}
+                  </Text>
+                  <Text fontSize="xs" color="fg.subtle" letterSpacing="tight">
+                    {format(date, "EEE")}
+                  </Text>
+                </Flex>
               </Flex>
               <Flex align="center" gap={2}>
                 <Badge
@@ -925,9 +946,12 @@ function EventCard({
                   {isUp ? "+" : "−"}${Math.abs(endBalance).toFixed(2)}
                 </Badge>
                 {hasTransactions && (
-                  <Text fontSize="xs" color="fg.subtle">
-                    {transactions.length}
-                  </Text>
+                  <>
+                    <Text fontSize="xs" color="fg.subtle">
+                      {transactions.length}
+                    </Text>
+                    <AccordionItemIndicator />
+                  </>
                 )}
               </Flex>
             </Flex>
@@ -1035,14 +1059,22 @@ function EventCard({
           <AccordionItemContent px={0} pb={0}>
             <Separator />
             <Box borderTopWidth="1px" borderColor="border.subtle" pt={2} pb={2}>
-              {transactions.map((tx) => (
-                <TxRow
-                  key={tx.id}
-                  tx={tx}
-                  onEdit={onEdit}
-                  onDelete={onDelete}
-                />
-              ))}
+              {transactions.length === 0 ? (
+                <Flex justify="center" align="center" py={4}>
+                  <Text fontSize="xs" color="fg.subtle">
+                    No transactions recorded
+                  </Text>
+                </Flex>
+              ) : (
+                transactions.map((tx) => (
+                  <TxRow
+                    key={tx.id}
+                    tx={tx}
+                    onEdit={onEdit}
+                    onDelete={onDelete}
+                  />
+                ))
+              )}
             </Box>
           </AccordionItemContent>
         </AccordionItem>
@@ -1107,15 +1139,19 @@ function EventRow({
   onEdit,
   onDelete,
   isLast,
+  containerRef,
 }: EventRowProps) {
   const delta = endBalance - startBalance;
   const isUp = delta >= 0;
+  const isToday =
+    format(date, "yyyy-MM-dd") === format(new Date(), "yyyy-MM-dd");
   const [open, setOpen] = useState(false);
   const hasTransactions = transactions.length > 0;
 
   return (
     <>
       <GridItem
+        ref={containerRef}
         px={5}
         py={3.5}
         alignSelf="center"
@@ -1129,9 +1165,31 @@ function EventRow({
           ) : (
             <TrendingDown size={14} color="var(--chakra-colors-red-400)" />
           )}
-          <Text fontSize="sm" fontWeight="semibold" color="fg">
-            {format(date, "MMM dd, yyyy")}
-          </Text>
+          <Flex flexDir="column" gap="0" lineHeight="1.2">
+            <Flex align="center" gap={1.5}>
+              <Text fontSize="sm" fontWeight="semibold" color="fg">
+                {format(date, "MMM dd, yyyy")}
+              </Text>
+              <Text fontSize="xs" color="fg.subtle">
+                {format(date, "EEE")}
+              </Text>
+            </Flex>
+
+            {isToday && (
+              <Badge
+                size="xs"
+                width="min-content"
+                colorPalette="yellow"
+                variant="outline"
+                borderRadius="full"
+                px={1.5}
+                fontSize="2xs"
+                fontWeight="bold"
+              >
+                Today
+              </Badge>
+            )}
+          </Flex>
         </Flex>
       </GridItem>
       <GridItem alignSelf="center" py={3.5}>
@@ -1391,7 +1449,10 @@ export default function BudgetDetail({
   upsertTransaction,
   deleteTransaction,
 }: BudgetDetailProps) {
-  const { projectSlug, budgetSlug } = useParams<{ projectSlug: string; budgetSlug: string }>();
+  const { projectSlug, budgetSlug } = useParams<{
+    projectSlug: string;
+    budgetSlug: string;
+  }>();
   const id = budgetSlug;
   const navigate = useNavigate();
 
@@ -1404,6 +1465,16 @@ export default function BudgetDetail({
   const [showForm, setShowForm] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [draftName, setDraftName] = useState("");
+  const todayMobileRef = useRef<HTMLDivElement>(null);
+  const todayDesktopRef = useRef<HTMLDivElement>(null);
+  const todayStr = format(new Date(), "yyyy-MM-dd");
+
+  function scrollToToday() {
+    const mobileEl = todayMobileRef.current;
+    const desktopEl = todayDesktopRef.current;
+    const el = mobileEl?.offsetParent !== null ? mobileEl : desktopEl;
+    el?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
 
   const handleStartEditName = useCallback(() => {
     setDraftName(entry?.meta.name ?? "");
@@ -1452,7 +1523,7 @@ export default function BudgetDetail({
         justifyContent="center"
       >
         {syncing ? (
-          <Text color="fg.muted" fontSize="sm">Loading…</Text>
+          <Spinner size="sm" color="fg.subtle" />
         ) : (
           <Stack align="center" gap={4}>
             <Text fontSize="4xl">🔍</Text>
@@ -1679,6 +1750,7 @@ export default function BudgetDetail({
                   value={balanceToday}
                   isPositive={balanceToday >= 0}
                   sub="vs daily limit"
+                  onClick={scrollToToday}
                 />
               </Flex>
             </Stack>
@@ -1766,6 +1838,11 @@ export default function BudgetDetail({
                       onEdit={handleSaveTx}
                       onDelete={handleDelete}
                       onQuickSave={handleSaveTx}
+                      containerRef={
+                        format(ev.date, "yyyy-MM-dd") === todayStr
+                          ? todayMobileRef
+                          : undefined
+                      }
                     />
                   ))}
                 </Stack>
@@ -1806,6 +1883,11 @@ export default function BudgetDetail({
                         isLast={idx === enrichedEvents.length - 1}
                         onEdit={handleSaveTx}
                         onDelete={handleDelete}
+                        containerRef={
+                          format(ev.date, "yyyy-MM-dd") === todayStr
+                            ? todayDesktopRef
+                            : undefined
+                        }
                       />
                     ))}
                     <GridItem

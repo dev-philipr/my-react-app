@@ -13,6 +13,7 @@ import {
   Text,
   Icon,
   Separator,
+  Spinner,
 } from "@chakra-ui/react";
 import { parseISO, differenceInDays, format } from "date-fns";
 import {
@@ -56,6 +57,7 @@ import { Switch } from "./components/ui/switch";
 
 interface BudgetListProps {
   projectSlug: string;
+  syncing: boolean;
   index: BudgetMeta[];
   getBudgetEntry: (id: string) => BudgetEntry | null;
   createBudget: (name: string, config: BudgetConfig) => string;
@@ -1074,6 +1076,7 @@ function PrivacySettingsModal({
 
 export default function BudgetList({
   projectSlug,
+  syncing,
   index,
   getBudgetEntry,
   createBudget,
@@ -1088,6 +1091,20 @@ export default function BudgetList({
   addMember,
   removeMember,
 }: BudgetListProps) {
+  if (syncing && index.length === 0) {
+    return (
+      <Box
+        minH="100vh"
+        bg="bg"
+        display="flex"
+        alignItems="center"
+        justifyContent="center"
+      >
+        <Spinner size="sm" color="fg.subtle" />
+      </Box>
+    );
+  }
+
   const navigate = useNavigate();
   const [showCreate, setShowCreate] = useState(false);
   const [showPrivacy, setShowPrivacy] = useState(false);
