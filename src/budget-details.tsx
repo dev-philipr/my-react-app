@@ -1172,7 +1172,7 @@ function EventRow({
   containerRef,
 }: EventRowProps) {
   const delta = endBalance - startBalance;
-  const isUp = delta >= 0;
+  const isUp = endBalance >= 0;
   const isToday =
     format(date, "yyyy-MM-dd") === format(new Date(), "yyyy-MM-dd");
   const [open, setOpen] = useState(false);
