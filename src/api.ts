@@ -118,6 +118,7 @@ export interface ServerBudget {
   range_from: string;
   range_to: string;
   budget: number;
+  starting_budget?: number;
   daily_budget: number;
   color: string;
   created_at: string;
@@ -139,6 +140,7 @@ export async function createBudget(
       rangeFrom: config.rangeFrom,
       rangeTo: config.rangeTo,
       budget: config.budget,
+      startingBudget: config.startingBudget,
       dailyBudget: config.dailyBudget,
       color,
     }),
@@ -156,6 +158,7 @@ export async function updateBudget(
           rangeFrom: patch.rangeFrom,
           rangeTo: patch.rangeTo,
           budget: patch.budget,
+          startingBudget: patch.startingBudget,
           dailyBudget: patch.dailyBudget,
         }
       : patch;
@@ -231,6 +234,7 @@ export function serverBudgetToEntry(b: ServerBudget): BudgetEntry {
       rangeFrom: b.range_from,
       rangeTo: b.range_to,
       budget: b.budget,
+      startingBudget: b.starting_budget ?? b.budget,
       dailyBudget: b.daily_budget,
     },
     transactions: (b.transactions ?? []).map((t) => ({

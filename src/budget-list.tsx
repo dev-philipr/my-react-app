@@ -176,6 +176,7 @@ const EMPTY_CONFIG: BudgetConfig = {
   rangeFrom: "",
   rangeTo: "",
   budget: 0,
+  startingBudget: 0,
   dailyBudget: 0,
 };
 
@@ -324,7 +325,11 @@ function NewBudgetForm({ onSave, onCancel }: NewBudgetFormProps) {
         </Grid>
 
         {/* Budget amounts */}
-        <Grid templateColumns="1fr 1fr" gap={4} mb={8}>
+        <Grid
+          templateColumns={{ base: "1fr", md: "1fr 1fr 1fr" }}
+          gap={4}
+          mb={8}
+        >
           <Field.Root>
             <Field.Label
               fontSize="xs"
@@ -351,6 +356,36 @@ function NewBudgetForm({ onSave, onCancel }: NewBudgetFormProps) {
                 step={0.01}
                 value={config.budget || ""}
                 onChange={(e) => set("budget", parseFloat(e.target.value) || 0)}
+              />
+            </InputGroup>
+          </Field.Root>
+          <Field.Root>
+            <Field.Label
+              fontSize="xs"
+              color="fg.muted"
+              fontWeight="semibold"
+              textTransform="uppercase"
+              letterSpacing="wider"
+            >
+              Starting budget
+            </Field.Label>
+            <InputGroup
+              startElement={
+                <Text fontSize="xs" color="fg.muted">
+                  $
+                </Text>
+              }
+            >
+              <Input
+                type="number"
+                size="sm"
+                borderRadius="lg"
+                placeholder="0.00"
+                step={0.01}
+                value={config.startingBudget || ""}
+                onChange={(e) =>
+                  set("startingBudget", parseFloat(e.target.value) || 0)
+                }
               />
             </InputGroup>
           </Field.Root>
@@ -433,6 +468,7 @@ function BudgetCard({ meta, entry, onOpen, onDelete }: BudgetCardProps) {
               to: parseISO(entry.config.rangeTo),
             },
             budget: entry.config.budget,
+            startingBudget: entry.config.startingBudget,
             dailyBudget: entry.config.dailyBudget,
           },
           transactions: entry.transactions.map((tx) => ({
@@ -445,6 +481,7 @@ function BudgetCard({ meta, entry, onOpen, onDelete }: BudgetCardProps) {
           config: {
             range: { from: new Date(), to: new Date() },
             budget: 0,
+            startingBudget: 0,
             dailyBudget: 0,
           },
           transactions: [],

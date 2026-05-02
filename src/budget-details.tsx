@@ -380,6 +380,36 @@ function ConfigPanel({ config, onSave, onCancel }: ConfigPanelProps) {
             textTransform="uppercase"
             letterSpacing="wider"
           >
+            Starting Budget
+          </Field.Label>
+          <InputGroup
+            startElement={
+              <Text fontSize="xs" color="fg.muted">
+                $
+              </Text>
+            }
+          >
+            <Input
+              type="number"
+              size="sm"
+              borderRadius="lg"
+              placeholder="0.00"
+              step={0.01}
+              value={draft.startingBudget || ""}
+              onChange={(e) =>
+                set("startingBudget", parseFloat(e.target.value) || 0)
+              }
+            />
+          </InputGroup>
+        </Field.Root>
+        <Field.Root>
+          <Field.Label
+            fontSize="xs"
+            color="fg.muted"
+            fontWeight="semibold"
+            textTransform="uppercase"
+            letterSpacing="wider"
+          >
             Daily Budget
           </Field.Label>
           <InputGroup
@@ -1551,6 +1581,7 @@ export default function BudgetDetail({
         to: parseISO(config.rangeTo),
       },
       budget: config.budget,
+      startingBudget: config.startingBudget,
       dailyBudget: config.dailyBudget,
     },
     transactions: transactions.map(txToDate),

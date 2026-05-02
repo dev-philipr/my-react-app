@@ -35,6 +35,7 @@ export interface BudgetConfig {
   rangeFrom: string;
   rangeTo: string;
   budget: number;
+  startingBudget: number;
   dailyBudget: number;
 }
 
@@ -203,6 +204,7 @@ export function useBudgets(projectSlug: string) {
             range_from: config.rangeFrom,
             range_to: config.rangeTo,
             budget: config.budget,
+            starting_budget: config.startingBudget,
             daily_budget: config.dailyBudget,
             color: "green",
             created_at: new Date().toISOString(),
@@ -257,6 +259,7 @@ export function useBudgets(projectSlug: string) {
                 range_from: config.rangeFrom,
                 range_to: config.rangeTo,
                 budget: config.budget,
+                starting_budget: config.startingBudget,
                 daily_budget: config.dailyBudget,
               },
         ),

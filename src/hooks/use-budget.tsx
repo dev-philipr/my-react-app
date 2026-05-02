@@ -5,6 +5,7 @@ interface BudgetInput {
   config: {
     range: { from: Date; to: Date };
     budget: number;
+    startingBudget: number;
     dailyBudget: number;
   };
   transactions: Array<{
@@ -49,7 +50,7 @@ export function useBudget({ config, transactions }: BudgetInput) {
   const totalBalance = config.budget - totalExpenses + totalIncome;
   const totalSpent = totalExpenses - totalIncome;
 
-  let runningBalance = 0;
+  let runningBalance = config.startingBudget || 0;
   const events = eachDayOfInterval({
     start: config.range.from,
     end: config.range.to,

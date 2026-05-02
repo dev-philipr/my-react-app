@@ -280,6 +280,7 @@ app.post("/api/spaces/:projectSlug/budgets", async (c) => {
     rangeFrom?: string;
     rangeTo?: string;
     budget?: number;
+    startingBudget?: number;
     dailyBudget?: number;
     color?: string;
   }>();
@@ -292,8 +293,8 @@ app.post("/api/spaces/:projectSlug/budgets", async (c) => {
 
   try {
     const result = await c.env.DB.prepare(
-      `INSERT INTO budgets (slug, project_slug, name, range_from, range_to, budget, daily_budget, color)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO budgets (slug, project_slug, name, range_from, range_to, budget, starting_budget, daily_budget, color)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
       .bind(
         slug,
@@ -302,6 +303,7 @@ app.post("/api/spaces/:projectSlug/budgets", async (c) => {
         body.rangeFrom,
         body.rangeTo,
         body.budget ?? 0,
+        body.startingBudget ?? body.budget ?? 0,
         body.dailyBudget ?? 0,
         body.color ?? "green",
       )
@@ -341,6 +343,7 @@ app.put("/api/spaces/:projectSlug/budgets/:budgetSlug", async (c) => {
     rangeFrom?: string;
     rangeTo?: string;
     budget?: number;
+    startingBudget?: number;
     dailyBudget?: number;
     color?: string;
   }>();
@@ -351,6 +354,7 @@ app.put("/api/spaces/:projectSlug/budgets/:budgetSlug", async (c) => {
       range_from   = COALESCE(?, range_from),
       range_to     = COALESCE(?, range_to),
       budget       = COALESCE(?, budget),
+      starting_budget = COALESCE(?, starting_budget),
       daily_budget = COALESCE(?, daily_budget),
       color        = COALESCE(?, color)
     WHERE project_slug = ? AND slug = ?`,
@@ -360,6 +364,7 @@ app.put("/api/spaces/:projectSlug/budgets/:budgetSlug", async (c) => {
       body.rangeFrom ?? null,
       body.rangeTo ?? null,
       body.budget ?? null,
+      body.startingBudget ?? null,
       body.dailyBudget ?? null,
       body.color ?? null,
       projectSlug,
