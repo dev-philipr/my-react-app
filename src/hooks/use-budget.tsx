@@ -54,12 +54,13 @@ export function useBudget({ config, transactions }: BudgetInput) {
   const events = eachDayOfInterval({
     start: config.range.from,
     end: config.range.to,
-  }).map((date) => {
+  }).map((date, index) => {
     const key = format(new UTCDate(date), "yyyy-MM-dd");
     const expenses = expensesByDate[key] ?? 0;
     const income = incomeByDate[key] ?? 0;
 
-    const startBalance = config.dailyBudget + runningBalance;
+    const startBalance =
+      index === 0 ? runningBalance : config.dailyBudget + runningBalance;
     const endBalance = startBalance - expenses + income;
     runningBalance = endBalance;
 

@@ -1171,7 +1171,6 @@ function EventRow({
   isLast,
   containerRef,
 }: EventRowProps) {
-  const delta = endBalance - startBalance;
   const isUp = endBalance >= 0;
   const isToday =
     format(date, "yyyy-MM-dd") === format(new Date(), "yyyy-MM-dd");
@@ -1265,7 +1264,7 @@ function EventRow({
             height="min-content"
             px={2}
           >
-            {isUp ? "+" : "−"}${Math.abs(delta).toFixed(2)}
+            {isUp ? "+" : "−"}${Math.abs(endBalance).toFixed(2)}
           </Badge>
           {hasTransactions && (
             <Button
