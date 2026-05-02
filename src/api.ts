@@ -1,11 +1,19 @@
-import type { BudgetConfig, BudgetEntry, Transaction } from "./hooks/use-budgets";
+import type {
+  BudgetConfig,
+  BudgetEntry,
+  Transaction,
+} from "./hooks/use-budgets";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 export const ACCESS_DENIED = Symbol("ACCESS_DENIED");
 
 function storedEmail(): string | null {
-  try { return localStorage.getItem("dp_user_email"); } catch { return null; }
+  try {
+    return localStorage.getItem("dp_user_email");
+  } catch {
+    return null;
+  }
 }
 
 async function api<T>(url: string, init?: RequestInit): Promise<T | null> {
@@ -202,10 +210,10 @@ export async function upsertTransaction(
     );
     return res !== null ? { id: tx.id } : null;
   }
-  return api(
-    `/api/spaces/${projectSlug}/budgets/${budgetSlug}/transactions`,
-    { method: "POST", body: JSON.stringify(tx) },
-  );
+  return api(`/api/spaces/${projectSlug}/budgets/${budgetSlug}/transactions`, {
+    method: "POST",
+    body: JSON.stringify(tx),
+  });
 }
 
 export async function deleteTransaction(
@@ -234,7 +242,7 @@ export function serverBudgetToEntry(b: ServerBudget): BudgetEntry {
       rangeFrom: b.range_from,
       rangeTo: b.range_to,
       budget: b.budget,
-      startingBudget: b.starting_budget ?? b.budget,
+      startingBudget: b.starting_budget ?? b.daily_budget,
       dailyBudget: b.daily_budget,
     },
     transactions: (b.transactions ?? []).map((t) => ({
@@ -246,4 +254,3 @@ export function serverBudgetToEntry(b: ServerBudget): BudgetEntry {
     })),
   };
 }
-
