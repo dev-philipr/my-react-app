@@ -1,13 +1,8 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<svg width="100px" height="100px" viewBox="0 0 100 100" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
-    <title>Budget Favicon</title>
-    <defs></defs>
-    <g id="Page-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
-        <circle id="Background-Circle" fill="#008080" cx="50" cy="50" r="40"></circle>
-        <g id="White-Bars-and-Arrow" fill="#FFFFFF" fill-rule="nonzero">
-            <rect x="25" y="55" width="10" height="20" rx="2"></rect>
-            <rect x="40" y="40" width="10" height="35" rx="2"></rect>
-            <polygon points="55 75 65 75 65 22 70 22 60 10 50 22 55 22"></polygon>
-        </g>
-    </g>
+<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background Circle (Mint) -->
+  <circle cx="40" cy="50" r="30" fill="none" stroke="#6ee7b7" stroke-width="6"/>
+  <!-- Overlapping Circle (Teal with Opacity) -->
+  <circle cx="60" cy="50" r="30" fill="#0d9488" fill-opacity="0.2" stroke="#0d9488" stroke-width="6"/>
+  <!-- The Center Focus (Solid Pop) -->
+  <circle cx="50" cy="50" r="8" fill="#10b981"/>
 </svg>
